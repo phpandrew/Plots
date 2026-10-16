@@ -69,6 +69,8 @@ type Settings struct {
 	brushes     map[HWND]uintptr
 	fontNames   []string
 	chooseBtn   HWND
+	pollBar     HWND
+	pollLabel   HWND
 }
 
 const (
@@ -104,6 +106,7 @@ const (
 	idUniSw
 	idUniChoose
 	idUniOpacity
+	idPoll
 )
 
 var settingsProc uintptr
@@ -203,7 +206,8 @@ func (s *Settings) build(sc func(int) int) {
 	s.ctl(0, "BUTTON", "Delete", BTN, sc(134), sc(348), sc(114), sc(32), idDelete)
 	s.lookBtn = s.ctl(0, "BUTTON", "Appearance", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(404), sc(sbW-24), sc(36), idAppearance)
 	s.genBtn = s.ctl(0, "BUTTON", "General settings", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(444), sc(sbW-24), sc(36), idGeneral)
-	s.ctl(0, "BUTTON", "Refresh desktop", BTN, sc(12), sc(496), sc(236), sc(32), idRefresh)
+	s.ctl(0, "BUTTON", "Refresh desktop", BTN, sc(12), sc(490), sc(236), sc(32), idRefresh)
+	s.muted = append(s.muted, s.ctl(0, "STATIC", "Plots "+displayVersion(), SS_LEFT, sc(20), sc(532), sc(220), sc(18), 0))
 
 	fw := colR - colF
 	w := colR - colL
@@ -286,7 +290,12 @@ func (s *Settings) build(sc func(int) int) {
 	s.dl = row("Also move finished downloads from the Downloads folder to the desktop", idDl)
 	s.dlLabel = gp(s.ctl(0, "STATIC", "", SS_LEFT|0x4000 /*SS_PATHELLIPSIS*/, sc(colL), sc(y-8), sc(w-70), sc(20), 0))
 	s.muted = append(s.muted, s.dlLabel)
-	s.status = gp(s.ctl(0, "STATIC", "", SS_LEFT, sc(colL), sc(y+24), sc(w), sc(40), 0))
+	gp(s.ctl(0, "STATIC", "Desktop check rate", SS_LEFT, sc(colL), sc(y+28), sc(150), sc(20), 0))
+	s.pollBar = gp(s.ctl(0, "msctls_trackbar32", "", WS_TABSTOP|TBS_HORZ, sc(colF+40), sc(y+22), sc(fw-110), sc(32), idPoll))
+	sendMessage(s.pollBar, TBM_SETRANGE, 1, uintptr(5<<16|1))
+	s.pollLabel = gp(s.ctl(0, "STATIC", "", SS_LEFT, sc(colR-64), sc(y+28), sc(64), sc(20), 0))
+	s.muted = append(s.muted, gp(s.ctl(0, "STATIC", "How quickly new, deleted and moved icons are picked up. Faster uses a little more CPU.", SS_LEFT, sc(colL), sc(y+56), sc(w), sc(20), 0)))
+	s.status = gp(s.ctl(0, "STATIC", "", SS_LEFT, sc(colL), sc(y+84), sc(w), sc(30), 0))
 	s.muted = append(s.muted, s.status)
 
 	s.editBtn = s.ctl(0, "BUTTON", "Edit layout", BTN, sc(colR-236), sc(512), sc(116), sc(32), idEdit)
@@ -623,6 +632,8 @@ func (s *Settings) refreshGeneral() {
 	setCheck(s.flags, c.ManageDesktopFlags)
 	setCheck(s.snap, c.SnapToGrid)
 	setCheck(s.direct, c.DirectEdit)
+	sendMessage(s.pollBar, TBM_SETPOS, 1, uintptr(c.PollMs/100))
+	setWindowText(s.pollLabel, fmt.Sprintf("%.1f s", float64(c.PollMs)/1000))
 	sendMessage(s.inboxCombo, 0x14B /*CB_RESETCONTENT*/, 0, 0)
 	sendMessage(s.inboxCombo, 0x143 /*CB_ADDSTRING*/, 0, up("(off — leave new items where Windows puts them)"))
 	s.comboIDs = []string{""}
@@ -789,6 +800,16 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		a.save(false)
 		return 0
 	case WM_HSCROLL:
+		if !s.loading && lp == s.pollBar {
+			v := int(sendMessage(lp, TBM_GETPOS, 0, 0)) * 100
+			if v != a.cfg.PollMs {
+				a.cfg.PollMs = v
+				setWindowText(s.pollLabel, fmt.Sprintf("%.1f s", float64(v)/1000))
+				call(pSetTimer, a.main, timerTick, uintptr(v), 0)
+				a.markDirty()
+			}
+			return 0
+		}
 		if !s.loading && (lp == s.sizeBar || lp == s.padBar || lp == s.uniBar) {
 			v := int(sendMessage(lp, TBM_GETPOS, 0, 0))
 			switch lp {
@@ -950,4 +971,12 @@ func (s *Settings) lookChanged() {
 	s.refreshLook()
 	s.refreshList()
 	a.save(false)
+}
+
+func displayVersion() string {
+	v := version
+	if len(v) > 0 && v[0] >= '0' && v[0] <= '9' {
+		v = "v" + v
+	}
+	return v
 }

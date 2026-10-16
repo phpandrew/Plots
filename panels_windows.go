@@ -142,6 +142,7 @@ func (a *App) updatePanels() {
 		return
 	}
 	mode := a.panelMode()
+	a.fixPanelOrder()
 	if a.ticks%10 == 1 || wc.sig == "" {
 		if refreshWallpaper(a.mons) {
 			for _, p := range a.panels {
@@ -212,5 +213,39 @@ func (a *App) updatePanels() {
 		if !seen[id] {
 			a.destroyPanel(id)
 		}
+	}
+}
+
+// fixPanelOrder makes sure every panel sits between the icons and the
+// wallpaper. Explorer re-orders its own windows when the wallpaper changes
+// (slideshows, theme changes), which would bury the panels under the wallpaper.
+func (a *App) fixPanelOrder() {
+	if len(a.panels) == 0 || a.desk.InsertAfter == 0 {
+		return
+	}
+	ours := map[HWND]bool{}
+	for _, p := range a.panels {
+		ours[p.hwnd] = true
+	}
+	// walk the z-order below DefView: all our panels must come before anything else
+	ok := true
+	seen := 0
+	for h := call(pGetWindow, a.desk.InsertAfter, 2 /*GW_HWNDNEXT*/); h != 0 && seen < len(ours); h = call(pGetWindow, h, 2) {
+		if !ours[h] {
+			if call(pIsWindowVisible, h) != 0 {
+				ok = false
+				break
+			}
+			continue
+		}
+		seen++
+	}
+	if ok && seen == len(ours) {
+		return
+	}
+	log.Printf("panels were buried (z-order changed by Explorer); restoring")
+	for _, p := range a.panels {
+		call(pSetWindowPos, p.hwnd, a.desk.InsertAfter, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)
+		call(pInvalidateRect, p.hwnd, 0, 0)
 	}
 }

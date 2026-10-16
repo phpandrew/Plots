@@ -22,7 +22,7 @@ const (
 func (a *App) trayData() *NOTIFYICONDATAW {
 	nid := &NOTIFYICONDATAW{HWnd: a.main, UID: 1, UFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP, UCallbackMessage: msgTray, HIcon: a.trayIcon}
 	nid.CbSize = uint32(unsafe.Sizeof(*nid))
-	copy(nid.SzTip[:], u16s("Plots — desktop groups"))
+	copy(nid.SzTip[:], u16s("Plots "+displayVersion()))
 	return nid
 }
 
