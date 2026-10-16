@@ -27,7 +27,6 @@ const (
 	msgDragEnd      = WM_APP + 22
 
 	timerTick = 1
-	tickMs    = 400
 )
 
 type panel struct {
@@ -100,6 +99,7 @@ func main() {
 	if f, err := os.OpenFile(filepath.Join(dir, "plots.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
 		log.SetOutput(f)
 	}
+	log.Printf("Plots %s starting", version)
 	cfgPath := filepath.Join(dir, "config.json")
 	cfg, err := LoadConfig(cfgPath)
 	if err != nil {
@@ -192,7 +192,7 @@ func (a *App) run() {
 	a.publishHookState()
 	startMouseHook(a.main)
 	startDesktopWatcher(a.main)
-	call(pSetTimer, a.main, timerTick, tickMs, 0)
+	call(pSetTimer, a.main, timerTick, uintptr(a.cfg.PollMs), 0)
 	a.tick()
 	if len(a.cfg.Plots) == 0 {
 		// first run: start in edit mode with one plot so there's something to see
@@ -272,10 +272,10 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		a.dragEnd()
 		return 0
 	case msgDesktopChanged:
-		call(pSetTimer, a.main, timerVerify, 300, 0) // debounce bursts of changes
+		call(pSetTimer, a.main, timerVerify, uintptr(a.cfg.PollMs), 0) // debounce bursts of changes
 		return 0
 	case WM_APP + 11:
-		call(pSetTimer, a.main, timerTick, tickMs, 0)
+		call(pSetTimer, a.main, timerTick, uintptr(a.cfg.PollMs), 0)
 		return 0
 	case msgShowSettings:
 		a.showSettings("")

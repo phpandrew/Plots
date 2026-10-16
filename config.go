@@ -13,6 +13,9 @@ import (
 
 // Plot is one desktop group. Its rectangle is stored relative to the
 // monitor it lives on, so plots survive monitor re-arrangement.
+// version is set at build time (-ldflags "-X main.version=...").
+var version = "dev"
+
 type Plot struct {
 	ID      string   `json:"id"`
 	Title   string   `json:"title"`
@@ -48,6 +51,7 @@ type Config struct {
 	Hidden             bool     `json:"hidden"`
 	Padding            int      `json:"padding"` // icon inset inside plots, px at 100% scale
 	SnapToGrid         bool     `json:"snapToGrid"`
+	PollMs             int      `json:"pollMs"`     // how often the desktop is checked, 100-500 ms
 	DirectEdit         bool     `json:"directEdit"` // move/resize plots without edit mode
 	PanelMode          string   `json:"panelMode"`  // "", "slwa", "plain", "ulw" (how panels are drawn on the desktop layer)
 	Known              []string `json:"known"`      // every desktop item seen, to detect new ones across restarts
@@ -64,6 +68,7 @@ func DefaultConfig() *Config {
 		UniformColor:       "#2B2B2B",
 		UniformOpacity:     60,
 		DirectEdit:         true,
+		PollMs:             300,
 		TitleSize:          11,
 	}
 }
@@ -128,6 +133,9 @@ func LoadConfig(path string) (*Config, error) {
 		// keep a copy of the broken file so nothing is lost
 		os.WriteFile(path+".broken", b, 0o644)
 		return DefaultConfig(), err
+	}
+	if cfg.PollMs < 100 || cfg.PollMs > 500 {
+		cfg.PollMs = 300
 	}
 	if cfg.TitleSize <= 0 {
 		cfg.TitleSize = 11

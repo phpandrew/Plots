@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to publish releases on tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test (platform-independent logic)
+        run: go test ./...
+
+      - name: Vet (Windows build)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          # Win32/COM code intentionally uses unkeyed GUID literals and uintptr<->pointer casts
+          out=$(go vet ./... 2>&1 | grep -v -e "unkeyed fields" -e "possible misuse of unsafe.Pointer" -e "^#" || true)
+          if [ -n "$out" ]; then echo "$out"; exit 1; fi
+
+      - name: Version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Plots.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -H windowsgui -X main.version=${{ steps.ver.outputs.version }}" \
+            -o dist/Plots.exe .
+          cp dist/Plots.exe dist/Plots-update.exe
+          ls -la dist
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Plots-${{ steps.ver.outputs.version }}
+          path: |
+            dist/Plots.exe
+            dist/Plots-update.exe
+          retention-days: 30
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Plots.exe
+          generate_release_notes: true

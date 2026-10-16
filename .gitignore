@@ -1,0 +1,13 @@
+# Built binaries (GitHub Actions builds these)
+*.exe
+dist/
+
+# Go
+*.test
+*.out
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

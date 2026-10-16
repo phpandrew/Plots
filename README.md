@@ -2,6 +2,17 @@
 
 A lightweight Stardock Fences–style organizer. Single `Plots.exe`, no installer, no runtime.
 
+
+<p align="center">
+  <img src="docs/plot.png" alt="A plot on the desktop: translucent panel over the wallpaper with a title bar and icons" width="600"><br>
+  <em>A plot on the desktop: icons snap into a translucent panel that blends with your wallpaper.</em>
+</p>
+
+<p align="center">
+  <img src="docs/settings.png" alt="Plots settings window showing the plot list sidebar and the General settings page" width="600"><br>
+  <em>Settings: plots in the sidebar, with Appearance and General settings pages.</em>
+</p>
+
 ## Run it
 1. **Quit Fences first.** Both apps move the same desktop icons and will fight each other.
 2. Double-click `Plots.exe`. The Plots icon appears in the tray.
@@ -34,14 +45,25 @@ Each plot remembers the monitor it's on, by device name, and its position on tha
 - Config: `%APPDATA%\Plots\config.json`. Log: `%APPDATA%\Plots\plots.log`.
 - Plots turns off Explorer's *Auto arrange icons* and *Align icons to grid*. You can turn this off in Settings, but plots may then look misaligned.
 
-## Building from source
-Requires Go 1.24+ on any OS:
+## Building
+**GitHub Actions** (`.github/workflows/build.yml`) builds `Plots.exe` on every push to `main` and every pull request. Find it under **Actions › the run › Artifacts** as `Plots-dev-<commit>`. That zip has both `Plots.exe` and `Plots-update.exe`; drop `Plots-update.exe` next to a running Plots and it updates itself.
+
+To publish a release, push a version tag:
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+The workflow attaches `Plots.exe` to a GitHub Release for that tag, with notes generated automatically. The version shows in `%APPDATA%\Plots\plots.log`.
+
+`.exe` files are git-ignored. Builds come from CI, or from building locally:
 ```
 go build -trimpath -ldflags "-s -w -H windowsgui" -o Plots.exe .
 ```
-On Linux or macOS, add `GOOS=windows GOARCH=amd64`. The icon, manifest and version info are already in `rsrc_windows_*.syso`. To regenerate them after changing `winres/`, run `go run github.com/tc-hib/go-winres@latest make --in winres/winres.json`.
+On Linux or macOS, add `GOOS=windows GOARCH=amd64`. Requires Go 1.26+.
 
-Platform-independent logic (`engine.go`, `render.go`, `config.go`) has unit tests: `go test ./...`.
+The icon, manifest and version info live in `rsrc_windows_*.syso`; keep those committed. To regenerate them after changing `winres/`, run `go run github.com/tc-hib/go-winres@latest make --in winres/winres.json`.
+
+Platform-independent logic (`engine.go`, `render.go`, `config.go`, `wallpaper.go`) has unit tests: `go test ./...`.
 
 ## Layout of the code
 | File | What it does |
@@ -57,3 +79,8 @@ Platform-independent logic (`engine.go`, `render.go`, `config.go`) has unit test
 | `tray_windows.go` | Tray icon, tray menu, plot right-click menu, colour picker |
 | `hook_windows.go` | Low-level mouse hook on its own thread (title right-click, double-click hide, drop hints) |
 | `downloads_windows.go` | Downloads → desktop mover, start with Windows |
+| `panels_windows.go` | Draws plot panels on the desktop layer, behind the icons |
+| `wallpaper.go`, `wallpaper_windows.go` | Blends each panel with the wallpaper underneath it so it looks see-through |
+| `watcher_windows.go` | Watches the desktop folders and refreshes Explorer when it misses a change |
+| `fonts_windows.go` | Lists installed fonts for the Appearance page |
+| `.github/workflows/build.yml` | CI: test, vet, build `Plots.exe`, attach it to a release on `v*` tags |
