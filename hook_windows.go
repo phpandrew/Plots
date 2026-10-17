@@ -40,6 +40,7 @@ type plotZone struct {
 	collapsed bool // rolled up (and not peeking)
 	rolled    bool // rolled up in config (peeking or not)
 	scrolls   bool
+	folder    bool // live-folder plot: Plots handles clicks on its contents
 }
 
 // drag state, owned by the hook thread
@@ -51,6 +52,7 @@ var (
 	dragLatest     Point
 	dragPosted     bool
 	swallowUp      bool // eat the button-up that belongs to a click we handled
+	swallowRUp     bool
 	lastTitleClick time.Time
 	lastTitleID    string
 	peekID         string
@@ -236,6 +238,12 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 		if st.hidden {
 			return false
 		}
+		if z := folderBodyAt(st, pt); z != nil {
+			if msg == WM_RBUTTONUP {
+				postMessage(hookMainWnd, msgFolderMenu, uintptr(z.idx), packPt(pt))
+			}
+			return true
+		}
 		for i := len(st.titles) - 1; i >= 0; i-- {
 			if st.titles[i].rect.Contains(pt) {
 				if msg == WM_RBUTTONUP {
@@ -285,6 +293,14 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 					return true
 				}
 				lastTitleClick, lastTitleID = now, id
+			}
+			if _, z := zoneAt(st, pt); z == 0 {
+				if fz := folderBodyAt(st, pt); fz != nil {
+					postMessage(hookMainWnd, msgFolderClick, uintptr(fz.idx), packPt(pt))
+					swallowUp = true
+					lastDown = time.Time{}
+					return true
+				}
 			}
 			if id, z := zoneAt(st, pt); z != 0 && (z == 9 || !onIcon) {
 				hookMu.Lock()
@@ -349,4 +365,24 @@ func hoverPeek(st *hookState, pt Point) {
 			return
 		}
 	}
+}
+
+// folderBodyAt returns the live-folder plot whose content area holds pt.
+func folderBodyAt(st *hookState, pt Point) *plotZone {
+	for i := len(st.plots) - 1; i >= 0; i-- {
+		z := &st.plots[i]
+		if !z.rect.Contains(pt) {
+			continue
+		}
+		if !z.folder || z.collapsed || z.title.Contains(pt) {
+			return nil
+		}
+		for _, t := range z.tabs {
+			if t.Contains(pt) {
+				return nil
+			}
+		}
+		return z
+	}
+	return nil
 }

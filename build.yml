@@ -1,7 +1,7 @@
 name: Build
 
 # Every push to main builds Plots.exe and publishes it as a GitHub Release
-# (v0.1.<run number>, marked "Latest"). Pull requests just build and test.
+# (v0.2.<run number>, marked "Latest"). Pull requests just build and test.
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
 
       - name: Version
         id: ver
-        run: echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+        run: echo "version=0.2.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Build Plots.exe
         env:

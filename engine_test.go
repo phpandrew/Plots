@@ -10,6 +10,7 @@ type fakeEnv struct{ gone map[string]bool }
 
 func (f fakeEnv) PlotRect(p *Plot) (Rect, float64) { return RectWH(p.X, p.Y, p.W, p.H), 1 }
 func (f fakeEnv) FileGone(path string) bool        { return f.gone[path] }
+func (f fakeEnv) FolderCount(p *Plot) int          { return 0 }
 func (f fakeEnv) IsDir(path string) bool           { return strings.HasSuffix(path, "/") }
 
 func newTestEngine() (*Engine, *Config) {
@@ -277,5 +278,20 @@ func TestSetTabNamesKeepsItems(t *testing.T) {
 	p.SetTabNames([]string{"A"})
 	if len(p.Tabs) != 1 || len(p.AllItems()) != 3 {
 		t.Fatalf("merge failed: %+v", p.AllItems())
+	}
+}
+
+func TestFolderPlotReceivesFiles(t *testing.T) {
+	e, cfg := newTestEngine()
+	cfg.Plots[1].Folder = "C:/Docs"
+	cfg.InboxPlot = "b"
+	var moved []string
+	e.FolderDrop = func(path string, p *Plot) { moved = append(moved, path) }
+	items := []Item{{"x", Point{0, 0}}}
+	items = apply(items, e.Reconcile(items))
+	items = append(items, Item{"new.pdf", Point{0, 100}})
+	e.Reconcile(items)
+	if len(moved) != 1 || len(cfg.Plots[1].AllItems()) != 0 {
+		t.Fatalf("new item should be moved into the folder, got %v / %v", moved, cfg.Plots[1].AllItems())
 	}
 }

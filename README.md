@@ -46,7 +46,7 @@ Each plot remembers the monitor it's on, by device name, and its position on tha
 - Plots turns off Explorer's *Auto arrange icons* and *Align icons to grid*. You can turn this off in Settings, but plots may then look misaligned.
 
 ## Building
-**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and publishes a GitHub Release named `v0.1.<build number>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. To update a running copy, drop `Plots-update.exe` next to it. Pull requests only build and test.
+**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and publishes a GitHub Release named `v0.2.<build number>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. To update a running copy, drop `Plots-update.exe` next to it. Pull requests only build and test.
 
 `.exe` files are git-ignored. Builds come from CI, or from building locally:
 ```
@@ -77,3 +77,5 @@ Platform-independent logic (`engine.go`, `render.go`, `config.go`, `wallpaper.go
 | `watcher_windows.go` | Watches the desktop folders and refreshes Explorer when it misses a change |
 | `fonts_windows.go` | Lists installed fonts for the Appearance page |
 | `.github/workflows/build.yml` | CI: test, vet, build `Plots.exe`, attach it to a release on `v*` tags |
+| `about_windows.go`, `update.go` | About page, GitHub links, update check / download from GitHub Releases |
+| `plotmodel.go` | Tabs, sorting rules and their presets |

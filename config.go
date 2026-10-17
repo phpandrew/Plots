@@ -17,20 +17,22 @@ import (
 var version = "dev"
 
 type Plot struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Color     string   `json:"color"`   // #RRGGBB
-	Opacity   int      `json:"opacity"` // 0-100, background opacity
-	Monitor   string   `json:"monitor"` // device name, e.g. \\.\DISPLAY1
-	X         int      `json:"x"`       // physical px, relative to monitor top-left
-	Y         int      `json:"y"`
-	W         int      `json:"w"`
-	H         int      `json:"h"`
-	Items     []string `json:"items,omitempty"` // legacy single list; migrated into Tabs
-	Tabs      []*Tab   `json:"tabs"`
-	ActiveTab int      `json:"activeTab"`
-	Collapsed bool     `json:"collapsed"` // rolled up to the title bar
-	Scroll    int      `json:"scroll"`    // first visible row when the plot scrolls
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	Color      string   `json:"color"`   // #RRGGBB
+	Opacity    int      `json:"opacity"` // 0-100, background opacity
+	Monitor    string   `json:"monitor"` // device name, e.g. \\.\DISPLAY1
+	X          int      `json:"x"`       // physical px, relative to monitor top-left
+	Y          int      `json:"y"`
+	W          int      `json:"w"`
+	H          int      `json:"h"`
+	Items      []string `json:"items,omitempty"` // legacy single list; migrated into Tabs
+	Tabs       []*Tab   `json:"tabs"`
+	ActiveTab  int      `json:"activeTab"`
+	Collapsed  bool     `json:"collapsed"`            // rolled up to the title bar
+	Scroll     int      `json:"scroll"`               // first visible row when the plot scrolls
+	Folder     string   `json:"folder,omitempty"`     // live folder: show this folder's contents
+	FolderSort string   `json:"folderSort,omitempty"` // "name" (default), "date", "type", "size"
 }
 
 type Config struct {
@@ -57,6 +59,8 @@ type Config struct {
 	SnapToGrid         bool     `json:"snapToGrid"`
 	GrowToFit          bool     `json:"growToFit"` // grow plots instead of scrolling
 	Rules              []*Rule  `json:"rules"`
+	AutoUpdateCheck    bool     `json:"autoUpdateCheck"`
+	LastUpdateCheck    int64    `json:"lastUpdateCheck"`
 	PollMs             int      `json:"pollMs"`     // how often the desktop is checked, 100-500 ms
 	DirectEdit         bool     `json:"directEdit"` // move/resize plots without edit mode
 	PanelMode          string   `json:"panelMode"`  // "", "slwa", "plain", "ulw" (how panels are drawn on the desktop layer)
@@ -75,6 +79,7 @@ func DefaultConfig() *Config {
 		UniformOpacity:     60,
 		DirectEdit:         true,
 		PollMs:             300,
+		AutoUpdateCheck:    true,
 		TitleSize:          11,
 	}
 }

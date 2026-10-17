@@ -73,6 +73,8 @@ type Env interface {
 	FileGone(path string) bool
 	// IsDir reports whether a desktop item is a folder.
 	IsDir(path string) bool
+	// FolderCount returns how many entries a live-folder plot shows.
+	FolderCount(p *Plot) int
 }
 
 type placement struct {
@@ -95,10 +97,13 @@ type Engine struct {
 	// ParkAt is an off-screen spot where hidden icons wait (screen coords).
 	ParkAt Point
 	// Peek temporarily shows a rolled-up plot (mouse hovering its title).
-	Peek    string
-	started bool
-	Clicks  []ClickHint // recent user clicks on the desktop (drop / new-item hints)
-	Logf    func(format string, args ...any)
+	Peek string
+	// FolderDrop is called when a desktop item is sent to a live-folder plot
+	// (dropped on it, or routed there by a rule / the new-items setting).
+	FolderDrop func(path string, p *Plot)
+	started    bool
+	Clicks     []ClickHint // recent user clicks on the desktop (drop / new-item hints)
+	Logf       func(format string, args ...any)
 	// Renames holds old->new paths reported by the file-system watcher.
 	Renames map[string]string
 	known   map[string]bool
@@ -152,7 +157,7 @@ func (e *Engine) computeViews(present map[string]Point) {
 		r, scale := e.Env.PlotRect(p)
 		th, pad := e.Cfg.TitleH(scale), e.Cfg.Pad(scale)
 		tabH := 0
-		if len(p.Tabs) > 1 {
+		if len(p.Tabs) > 1 && p.Folder == "" {
 			tabH = TabBarH(scale)
 		}
 		cols := (r.W() - 2*pad) / sx
@@ -175,6 +180,9 @@ func (e *Engine) computeViews(present map[string]Point) {
 			}
 		}
 		v.Count = len(shown)
+		if p.Folder != "" {
+			v.Count = e.Env.FolderCount(p)
+		}
 		rows := (v.Count + cols - 1) / cols
 		v.Title = Rect{r.L, r.T, r.R, r.T + th}
 		v.Chevron = Rect{r.R - th, r.T, r.R, r.T + th}
@@ -197,17 +205,21 @@ func (e *Engine) computeViews(present map[string]Point) {
 					p.Scroll = v.MaxScroll
 				}
 				v.Scroll = p.Scroll
-				first, last := v.Scroll*cols, min(len(shown), (v.Scroll+capRows)*cols)
-				v.Parked = append(v.Parked, shown[:first]...)
-				v.Parked = append(v.Parked, shown[last:]...)
-				shown = shown[first:last]
+				if p.Folder == "" {
+					first, last := min(len(shown), v.Scroll*cols), min(len(shown), (v.Scroll+capRows)*cols)
+					v.Parked = append(v.Parked, shown[:first]...)
+					v.Parked = append(v.Parked, shown[last:]...)
+					shown = shown[first:last]
+				}
 			}
 			if tabH > 0 {
 				v.TabBar = Rect{r.L, r.T + th, r.R, r.T + th + tabH}
-				tw := min(int(170*scale), (r.W()-2*pad)/len(p.Tabs))
+				// tabs share the full width equally (2 = 50/50, 3 = thirds, ...)
+				n := len(p.Tabs)
 				for i := range p.Tabs {
-					x := r.L + pad + i*tw
-					v.Tabs = append(v.Tabs, Rect{x, v.TabBar.T, x + tw, v.TabBar.B})
+					x0 := r.L + r.W()*i/n
+					x1 := r.L + r.W()*(i+1)/n
+					v.Tabs = append(v.Tabs, Rect{x0, v.TabBar.T, x1, v.TabBar.B})
 				}
 			}
 		}
@@ -342,6 +354,19 @@ func (e *Engine) insertAt(t *Tab, path string, idx int, present map[string]Point
 	t.Items = append(t.Items, path)
 }
 
+// sendTo files path into plot p (tab t). Live-folder plots receive the file
+// itself: it is moved into the folder.
+func (e *Engine) sendTo(p *Plot, t *Tab, path string) {
+	if p.Folder != "" {
+		e.unassign(path)
+		if e.FolderDrop != nil {
+			e.FolderDrop(path, p)
+		}
+		return
+	}
+	e.appendTo(t, path)
+}
+
 // appendTo adds path to the end of a tab (removing it from anywhere else).
 func (e *Engine) appendTo(t *Tab, path string) {
 	e.unassign(path)
@@ -365,6 +390,10 @@ func (e *Engine) tabAt(p *Plot, pt Point) *Tab {
 
 func (e *Engine) dropInto(p *Plot, path string, pos Point, present map[string]Point) {
 	e.logf("drop %q into %q at %v", path, p.Title, pos)
+	if p.Folder != "" {
+		e.sendTo(p, nil, path)
+		return
+	}
 	if t := e.tabAt(p, e.center(pos)); t != nil {
 		e.appendTo(t, path) // dropped on a tab label: file it in that tab
 		return
@@ -397,12 +426,12 @@ func (e *Engine) handleNew(path string, pos Point, present map[string]Point) {
 		return
 	}
 	if p, t := e.ruleFor(path); p != nil {
-		e.appendTo(t, path)
+		e.sendTo(p, t, path)
 		e.logf("new item %q -> %q by rule", path, p.Title)
 		return
 	}
 	if inbox := e.Cfg.Plot(e.Cfg.InboxPlot); inbox != nil {
-		e.appendTo(inbox.Tabs[0], path)
+		e.sendTo(inbox, inbox.Tabs[0], path)
 		e.logf("new item %q -> inbox %q", path, inbox.Title)
 		return
 	}
@@ -446,7 +475,7 @@ func (e *Engine) ApplyRules() int {
 		if _, cur := e.ownerTab(path); cur == t {
 			continue
 		}
-		e.appendTo(t, path)
+		e.sendTo(p, t, path)
 		n++
 	}
 	return n
@@ -488,9 +517,9 @@ func (e *Engine) Reconcile(items []Item) []Move {
 				if !known[it.Path] && e.owner(it.Path) == nil {
 					// created while Plots was not running
 					if p, t := e.ruleFor(it.Path); p != nil {
-						e.appendTo(t, it.Path)
+						e.sendTo(p, t, it.Path)
 					} else if inbox := e.Cfg.Plot(e.Cfg.InboxPlot); inbox != nil {
-						e.appendTo(inbox.Tabs[0], it.Path)
+						e.sendTo(inbox, inbox.Tabs[0], it.Path)
 					}
 				}
 			}
@@ -704,7 +733,7 @@ func (e *Engine) AdoptUnder(items []Item) {
 		if e.owner(it.Path) != nil {
 			continue
 		}
-		if p := e.plotAt(e.center(it.Pos)); p != nil {
+		if p := e.plotAt(e.center(it.Pos)); p != nil && p.Folder == "" {
 			p.Cur().Items = append(p.Cur().Items, it.Path)
 			e.Dirty = true
 		}

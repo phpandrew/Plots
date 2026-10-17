@@ -59,14 +59,18 @@ type App struct {
 	trayIcon       uintptr
 	taskbarCreated uint32
 
-	lastSave  time.Time
-	ticks     int
-	status    string
-	dl        *DLWatcher
-	quitting  bool
-	drag      *overlay
-	dragZone  int
-	lastCount int
+	lastSave       time.Time
+	ticks          int
+	status         string
+	dl             *DLWatcher
+	quitting       bool
+	folders        map[string]*folderState
+	updStatus      string
+	updAvailable   bool
+	startupChecked bool
+	drag           *overlay
+	dragZone       int
+	lastCount      int
 }
 
 var app *App
@@ -113,6 +117,7 @@ func main() {
 	app = a
 	a.eng = NewEngine(cfg, a)
 	a.eng.Logf = log.Printf
+	a.eng.FolderDrop = a.moveIntoFolder
 	a.mons = Monitors()
 	a.dl = NewDLWatcher(cfg)
 	a.run()
@@ -251,7 +256,19 @@ func (a *App) quit() {
 }
 
 func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
+	if forwardMenuMsg(msg, wp, lp) {
+		return 0
+	}
 	switch msg {
+	case msgThumbsReady:
+		a.updatePanels()
+		return 0
+	case msgFolderClick:
+		a.onFolderClick(wp, lp)
+		return 0
+	case msgFolderMenu:
+		a.onFolderMenu(wp, lp)
+		return 0
 	case WM_TIMER:
 		if wp == timerTick {
 			a.tick()
@@ -267,6 +284,11 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		switch uint32(loword(lp)) {
 		case WM_RBUTTONUP, WM_CONTEXTMENU:
 			a.trayMenu()
+		case WM_USER + 5: // NIN_BALLOONUSERCLICK: the update notification
+			a.showSettings("")
+			if a.settings != nil {
+				a.settings.showPage("about")
+			}
 		case WM_LBUTTONDBLCLK, WM_LBUTTONUP:
 			a.showSettings("")
 		}
@@ -321,6 +343,9 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			a.eng.Peek = ""
 		}
 		a.tick()
+		return 0
+	case msgUpdateResult:
+		a.onUpdateResult(wp == 1)
 		return 0
 	case msgDesktopChanged:
 		call(pSetTimer, a.main, timerVerify, uintptr(a.cfg.PollMs), 0) // debounce bursts of changes
@@ -434,6 +459,9 @@ func (a *App) tick() {
 	}
 	if a.ticks%10 == 0 {
 		a.checkUpdate()
+	}
+	if a.ticks == 25 || a.ticks%600 == 0 {
+		a.maybeAutoCheck()
 	}
 	if a.cfg.MoveDownloads && a.ticks%5 == 0 {
 		a.dl.Scan()
@@ -614,8 +642,13 @@ func (a *App) publishHookState() {
 				idx, rolled = i, p.Collapsed
 			}
 		}
+		folder := false
+		if p := a.cfg.Plot(v.ID); p != nil {
+			folder = p.Folder != ""
+		}
 		st.plots = append(st.plots, plotZone{id: v.ID, idx: idx, rect: v.Rect, title: v.Title, chevron: v.Chevron,
-			tabs: v.Tabs, edge: int(math.Round(8 * v.Scale)), collapsed: v.Collapsed, rolled: rolled, scrolls: v.MaxScroll > 0})
+			tabs: v.Tabs, edge: int(math.Round(8 * v.Scale)), collapsed: v.Collapsed, rolled: rolled, scrolls: v.MaxScroll > 0,
+			folder: folder})
 	}
 	for path, pos := range a.eng.last {
 		if a.eng.IsParked(path) {

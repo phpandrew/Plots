@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	xdraw "golang.org/x/image/draw"
 	"image"
 	"image/color"
 	"image/draw"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"golang.org/x/image/font"
@@ -462,4 +464,108 @@ func RenderToggleRow(w, h int, s float64, on, enabled bool) *image.RGBA {
 
 func circle(img *image.RGBA, cx, cy, r float32, c color.NRGBA) {
 	fill(img, c, func(z *vector.Rasterizer) { roundRectPath(z, cx-r, cy-r, cx+r, cy+r, r, r, false) })
+}
+
+// FolderCell is one entry drawn inside a live-folder plot (coords relative to the plot).
+type FolderCell struct {
+	Icon     image.Image
+	Name     string
+	X, Y     int // cell top-left
+	W, H     int // cell size
+	Selected bool
+}
+
+// DrawFolderCells paints icons and two-line labels, Explorer style.
+func DrawFolderCells(img *image.RGBA, cells []FolderCell, iconPx int, scale float64) {
+	f := labelFace(9 * 96 / 72 * scale)
+	for _, c := range cells {
+		if c.Selected {
+			fill(img, color.NRGBA{255, 255, 255, 60}, func(z *vector.Rasterizer) {
+				roundRectPath(z, float32(c.X+2), float32(c.Y), float32(c.X+c.W-2), float32(c.Y+c.H-4), float32(4*scale), float32(4*scale), false)
+			})
+		}
+		ix := c.X + (c.W-iconPx)/2
+		iy := c.Y + int(4*scale)
+		if c.Icon != nil {
+			b := c.Icon.Bounds()
+			dst := image.Rect(ix, iy, ix+iconPx, iy+iconPx)
+			if b.Dx() != iconPx || b.Dy() != iconPx {
+				// keep aspect ratio (thumbnails)
+				s := math.Min(float64(iconPx)/float64(b.Dx()), float64(iconPx)/float64(b.Dy()))
+				w, h := int(float64(b.Dx())*s), int(float64(b.Dy())*s)
+				dst = image.Rect(ix+(iconPx-w)/2, iy+(iconPx-h), ix+(iconPx-w)/2+w, iy+iconPx)
+				xdrawScale(img, dst, c.Icon)
+			} else {
+				draw.Draw(img, dst, c.Icon, b.Min, draw.Over)
+			}
+		}
+		if f == nil {
+			continue
+		}
+		lines := wrapLabel(f, c.Name, fixed.I(c.W-int(6*scale)), 2)
+		m := f.Metrics()
+		lh := m.Ascent + m.Descent
+		y := fixed.I(iy+iconPx+int(4*scale)) + m.Ascent
+		for _, ln := range lines {
+			d := &font.Drawer{Dst: img, Face: f}
+			tw := d.MeasureString(ln)
+			x := fixed.I(c.X) + (fixed.I(c.W)-tw)/2
+			d.Src = image.NewUniform(color.NRGBA{0, 0, 0, 150})
+			d.Dot = fixed.Point26_6{X: x + fixed.I(1), Y: y + fixed.I(1)}
+			d.DrawString(ln)
+			d.Src = image.NewUniform(color.NRGBA{255, 255, 255, 250})
+			d.Dot = fixed.Point26_6{X: x, Y: y}
+			d.DrawString(ln)
+			y += lh
+		}
+	}
+}
+
+// wrapLabel splits a file name into at most n lines that fit maxW, with an
+// ellipsis on the last line when it doesn't fit.
+func wrapLabel(f font.Face, s string, maxW fixed.Int26_6, n int) []string {
+	d := &font.Drawer{Face: f}
+	var lines []string
+	rs := []rune(s)
+	for len(rs) > 0 && len(lines) < n {
+		if len(lines) == n-1 || d.MeasureString(string(rs)) <= maxW {
+			line := string(rs)
+			if d.MeasureString(line) > maxW {
+				for len(rs) > 0 && d.MeasureString(string(rs)+"…") > maxW {
+					rs = rs[:len(rs)-1]
+				}
+				line = string(rs) + "…"
+			}
+			lines = append(lines, line)
+			break
+		}
+		// longest prefix that fits, preferring a break at a space / . / - / _
+		cut := 1
+		for cut < len(rs) && d.MeasureString(string(rs[:cut+1])) <= maxW {
+			cut++
+		}
+		brk := cut
+		for i := cut; i > cut/2; i-- {
+			if strings.ContainsRune(" ._-", rs[i-1]) {
+				brk = i
+				break
+			}
+		}
+		lines = append(lines, strings.TrimSpace(string(rs[:brk])))
+		rs = rs[brk:]
+	}
+	return lines
+}
+
+func xdrawScale(dst *image.RGBA, r image.Rectangle, src image.Image) {
+	xdraw.ApproxBiLinear.Scale(dst, r, src, src.Bounds(), draw.Over, nil)
+}
+
+// labelFace is the regular-weight UI font used for icon labels.
+func labelFace(px float64) font.Face {
+	win := os.Getenv("WINDIR")
+	if win == "" {
+		win = `C:\Windows`
+	}
+	return faceFor(filepath.Join(win, "Fonts", "segoeui.ttf"), px)
 }

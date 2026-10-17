@@ -91,6 +91,7 @@ const (
 	cmdDelete
 	cmdRoll
 	cmdTabs
+	cmdNewFolder
 	cmdOpacityBase = 200
 	cmdModeBase    = 400
 )
@@ -99,6 +100,7 @@ func (a *App) trayMenu() {
 	m := newMenu()
 	m.item(cmdEdit, "Edit plots", a.editing, false)
 	m.item(cmdNewPlot, "New plot", false, false)
+	m.item(cmdNewFolder, "New live folder plot…", false, false)
 	m.item(cmdSettings, "Settings…", false, false)
 	m.sep()
 	m.item(cmdHide, "Hide desktop icons && plots", a.cfg.Hidden, false)
@@ -152,6 +154,8 @@ func (a *App) runCmd(cmd int, plotID string) {
 		} else {
 			a.enterEdit()
 		}
+	case cmd == cmdNewFolder:
+		a.newFolderPlot(a.main)
 	case cmd == cmdNewPlot:
 		a.newPlot(cursorPos())
 	case cmd == cmdSettings:
@@ -229,4 +233,14 @@ func chooseColor(owner HWND, c color.NRGBA) (color.NRGBA, bool) {
 	}
 	v := cc.RgbResult
 	return color.NRGBA{uint8(v), uint8(v >> 8), uint8(v >> 16), 255}, true
+}
+
+// notify shows a Windows notification from the tray icon.
+func (a *App) notify(title, text string) {
+	nid := a.trayData()
+	nid.UFlags = 0x10 // NIF_INFO
+	copy(nid.SzInfoTitle[:63], u16s(title))
+	copy(nid.SzInfo[:255], u16s(text))
+	nid.DwInfoFlags = 0x1 // NIIF_INFO
+	call(pShell_NotifyIconW, NIM_MODIFY, uintptr(unsafe.Pointer(nid)))
 }

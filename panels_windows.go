@@ -168,7 +168,7 @@ func (a *App) updatePanels() {
 			a.panels[v.ID] = pn
 		}
 		o := a.renderOpts(p, v, false)
-		key := fmt.Sprintf("%s|%v|%s", a.lookKey(o), v.Rect, mode)
+		key := fmt.Sprintf("%s|%v|%s|%s", a.lookKey(o), v.Rect, mode, a.folderKey(p))
 		if pn.rect != v.Rect {
 			old := pn.rect
 			pos := screenToClient(a.desk.Host, Point{v.Rect.L, v.Rect.T})
@@ -179,6 +179,9 @@ func (a *App) updatePanels() {
 		}
 		if key != pn.key {
 			plot := RenderPlot(o)
+			if p.Folder != "" {
+				a.drawFolder(plot, p, v)
+			}
 			if mode == "ulw" {
 				if !pushLayered(pn.hwnd, plot, nil) {
 					log.Printf("UpdateLayeredWindow failed for panel %q: %v", p.Title, windows.GetLastError())

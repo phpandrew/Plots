@@ -5,7 +5,9 @@ package main
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -53,6 +55,17 @@ type Settings struct {
 	direct      HWND
 	comboIDs    []string
 	lookPage    []HWND
+	folderEdit  HWND
+	folderClear HWND
+	sortCombo   HWND
+	aboutPage   []HWND
+	aboutBtn    HWND
+	bigFont     uintptr
+	verLabel    HWND
+	linkLabel   HWND
+	installBtn  HWND
+	updLabel    HWND
+	autoUpd     HWND
 	rulesPage   []HWND
 	rulesBtn    HWND
 	ruleList    HWND
@@ -131,6 +144,9 @@ const (
 	idRuleAdd
 	idRuleDel
 	idRuleApply
+	idFolderBrowse
+	idFolderClear
+	idFolderSort
 )
 
 var settingsProc uintptr
@@ -228,11 +244,12 @@ func (s *Settings) build(sc func(int) int) {
 	s.list = s.ctl(0, "LISTBOX", "", WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS, sc(12), sc(52), sc(sbW-24), sc(248), idList)
 	s.ctl(0, "BUTTON", "+  Add plot", BTN, sc(12), sc(306), sc(114), sc(32), idAdd)
 	s.ctl(0, "BUTTON", "Delete", BTN, sc(134), sc(306), sc(114), sc(32), idDelete)
-	s.lookBtn = s.ctl(0, "BUTTON", "Appearance", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(352), sc(sbW-24), sc(36), idAppearance)
-	s.rulesBtn = s.ctl(0, "BUTTON", "Sorting rules", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(390), sc(sbW-24), sc(36), idRulesNav)
-	s.genBtn = s.ctl(0, "BUTTON", "General settings", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(428), sc(sbW-24), sc(36), idGeneral)
-	s.ctl(0, "BUTTON", "Refresh desktop", BTN, sc(12), sc(478), sc(236), sc(32), idRefresh)
-	s.muted = append(s.muted, s.ctl(0, "STATIC", "Plots "+displayVersion(), SS_LEFT, sc(20), sc(524), sc(220), sc(18), 0))
+	s.lookBtn = s.ctl(0, "BUTTON", "Appearance", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(346), sc(sbW-24), sc(34), idAppearance)
+	s.rulesBtn = s.ctl(0, "BUTTON", "Sorting rules", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(382), sc(sbW-24), sc(34), idRulesNav)
+	s.genBtn = s.ctl(0, "BUTTON", "General settings", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(418), sc(sbW-24), sc(34), idGeneral)
+	s.aboutBtn = s.ctl(0, "BUTTON", "About", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(454), sc(sbW-24), sc(34), idAboutNav)
+	s.ctl(0, "BUTTON", "Refresh desktop", BTN, sc(12), sc(496), sc(236), sc(30), idRefresh)
+	s.muted = append(s.muted, s.ctl(0, "STATIC", "Plots "+displayVersion(), SS_LEFT, sc(20), sc(532), sc(220), sc(18), 0))
 
 	fw := colR - colF
 	w := colR - colL
@@ -257,8 +274,18 @@ func (s *Settings) build(sc func(int) int) {
 	pg(s.ctl(0, "STATIC", "Tabs", SS_LEFT, sc(colL), sc(270), sc(100), sc(20), 0))
 	s.tabsEdit = pg(s.ctl(WS_EX_CLIENTEDGE, "EDIT", "", WS_TABSTOP|ES_AUTOHSCROLL, sc(colF), sc(266), sc(fw), sc(28), idTabs))
 	s.muted = append(s.muted, pg(s.ctl(0, "STATIC", "Separate tab names with commas, e.g. Orders, Audits, Designs. Leave empty for no tabs. Drop an icon on a tab to file it there.", SS_LEFT, sc(colF), sc(300), sc(fw), sc(40), 0)))
-	s.rollToggle = pg(s.ctl(0, "BUTTON", "Rolled up (only the title bar shows; hover to peek)", CHK, sc(colL), sc(348), sc(w), sc(32), idRoll))
+	s.rollToggle = pg(s.ctl(0, "BUTTON", "Rolled up (only the title bar shows; hover to peek)", CHK, sc(colL), sc(344), sc(w), sc(32), idRoll))
 	toggleState[s.rollToggle] = false
+	pg(s.ctl(0, "STATIC", "Live folder", SS_LEFT, sc(colL), sc(392), sc(100), sc(20), 0))
+	s.folderEdit = pg(s.ctl(WS_EX_CLIENTEDGE, "EDIT", "", ES_AUTOHSCROLL|0x800 /*ES_READONLY*/, sc(colF), sc(388), sc(fw-190), sc(28), 0))
+	pg(s.ctl(0, "BUTTON", "Choose…", BTN, sc(colR-184), sc(387), sc(90), sc(30), idFolderBrowse))
+	s.folderClear = pg(s.ctl(0, "BUTTON", "Clear", BTN, sc(colR-88), sc(387), sc(88), sc(30), idFolderClear))
+	pg(s.ctl(0, "STATIC", "Sort by", SS_LEFT, sc(colL), sc(434), sc(100), sc(20), 0))
+	s.sortCombo = pg(s.ctl(0, "COMBOBOX", "", WS_TABSTOP|0x3, sc(colF), sc(430), sc(200), sc(200), idFolderSort))
+	for _, t := range []string{"Name", "Date modified (newest first)", "Type", "Size (largest first)"} {
+		sendMessage(s.sortCombo, 0x143, 0, up(t))
+	}
+	s.muted = append(s.muted, pg(s.ctl(0, "STATIC", "Show a folder's live contents here instead of desktop icons. Files sent to this plot are moved into the folder.", SS_LEFT, sc(colF+210), sc(426), sc(fw-210), sc(40), 0)))
 	s.muted = append(s.muted, s.monLabel)
 
 	// ---- appearance page (applies to every plot)
@@ -323,6 +350,8 @@ func (s *Settings) build(sc func(int) int) {
 	s.ruleStatus = rp(s.ctl(0, "STATIC", "Patterns look like *.pdf;*.docx — use \"folder\" for folders. Rules are checked top to bottom.", SS_LEFT, sc(colL), sc(436), sc(w), sc(36), 0))
 	s.muted = append(s.muted, s.ruleStatus)
 
+	s.buildAbout(sc)
+
 	// ---- general page
 	h = gp(s.ctl(0, "STATIC", "General settings", SS_LEFT, sc(colL), sc(18), sc(w), sc(26), 0))
 	sendMessage(h, WM_SETFONT, s.bold, 1)
@@ -373,7 +402,10 @@ func (s *Settings) showPage(name string) {
 	vis(s.genPage, false)
 	vis(s.lookPage, false)
 	vis(s.rulesPage, false)
+	vis(s.aboutPage, false)
 	switch name {
+	case "about":
+		vis(s.aboutPage, true)
 	case "rules":
 		vis(s.rulesPage, true)
 		s.refreshRules()
@@ -392,6 +424,8 @@ func (s *Settings) showPage(name string) {
 	call(pInvalidateRect, s.genBtn, 0, 1)
 	call(pInvalidateRect, s.lookBtn, 0, 1)
 	call(pInvalidateRect, s.rulesBtn, 0, 1)
+	call(pInvalidateRect, s.aboutBtn, 0, 1)
+	s.refreshAbout()
 	call(pInvalidateRect, s.hwnd, 0, 1)
 }
 
@@ -483,6 +517,8 @@ func (s *Settings) drawNav(di *DRAWITEMSTRUCT) {
 		page, label = "look", "Appearance"
 	case idRulesNav:
 		page, label = "rules", "Sorting rules"
+	case idAboutNav:
+		page, label = "about", "About"
 	}
 	active := s.page == page
 	bg := clrSide
@@ -497,7 +533,14 @@ func (s *Settings) drawNav(di *DRAWITEMSTRUCT) {
 	old := call(pSelectObject, hdc, s.font)
 	call(pSetTextColor, hdc, 0x202020)
 	gx, gy := r.Left+int32(s.sc(12)), r.Top+(r.Bottom-r.Top)/2
-	if page == "rules" {
+	if page == "about" {
+		bg := clrSide
+		if active {
+			bg = clrSel
+		}
+		q := int32(s.sc(18))
+		blit(hdc, RECT{gx - int32(s.sc(1)), gy - q/2, gx + q, gy + q/2}, logoTile(int(q), bg))
+	} else if page == "rules" {
 		// funnel: three bars getting shorter, centred
 		for i, w := range []int32{16, 10, 4} {
 			y := gy - int32(s.sc(6)) + int32(s.sc(5*i))
@@ -656,6 +699,16 @@ func (s *Settings) loadPlot() {
 		setWindowText(s.tabsEdit, names)
 	}
 	setCheck(s.rollToggle, p.Collapsed)
+	setWindowText(s.folderEdit, p.Folder)
+	sortIdx := map[string]int{"": 0, "name": 0, "date": 1, "type": 2, "size": 3}[p.FolderSort]
+	sendMessage(s.sortCombo, 0x14E, uintptr(sortIdx), 0)
+	var fen uintptr
+	if p.Folder != "" {
+		fen = 1
+	}
+	call(pEnableWindow, s.sortCombo, fen)
+	call(pEnableWindow, s.folderClear, fen)
+	call(pEnableWindow, s.tabsEdit, 1-fen)
 	var en uintptr = 1
 	if s.a.cfg.UniformLook {
 		en = 0 // colour & opacity come from Appearance
@@ -746,6 +799,10 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			toggleState[lp] = !toggleState[lp]
 			call(pInvalidateRect, lp, 0, 0)
 		}
+		if s.aboutCommand(id) {
+			a.save(false)
+			return 0
+		}
 		p := a.cfg.Plot(s.cur)
 		switch id {
 		case idList:
@@ -789,6 +846,44 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 				p.SetTabNames(strings.Split(windowText(s.tabsEdit), ","))
 				a.markDirty()
 				a.eng.Relayout()
+				a.tick()
+			}
+		case idFolderBrowse:
+			if p != nil {
+				if n := len(p.AllItems()); n > 0 && p.Folder == "" {
+					messageBox(s.hwnd, fmt.Sprintf("\"%s\" holds %d desktop icon(s). Drag them to another plot first, or use \"New live folder plot…\" from the tray menu to make a separate plot.", p.Title, n), "Plots", MB_OK|MB_ICONINFO)
+					break
+				}
+				if dir := pickFolder(s.hwnd, "Choose the folder to show in \""+p.Title+"\""); dir != "" {
+					p.Folder = dir
+					if p.Title == "" || strings.HasPrefix(p.Title, "Plot ") {
+						p.Title = filepath.Base(dir)
+					}
+					p.SetTabNames(nil)
+					a.markDirty()
+					a.eng.Relayout()
+					a.tick()
+					s.loadPlot()
+					s.refreshList()
+				}
+			}
+		case idFolderClear:
+			if p != nil && p.Folder != "" {
+				p.Folder = ""
+				a.markDirty()
+				a.eng.Relayout()
+				a.tick()
+				s.loadPlot()
+			}
+		case idFolderSort:
+			if code == 1 && p != nil {
+				p.FolderSort = []string{"name", "date", "type", "size"}[max(0, int(sendMessage(s.sortCombo, 0x147, 0, 0)))%4]
+				if a.folders != nil {
+					if fs := a.folders[p.ID]; fs != nil {
+						fs.readAt = time.Time{}
+					}
+				}
+				a.markDirty()
 				a.tick()
 			}
 		case idRoll:
@@ -1013,7 +1108,9 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		}
 		hdc := wp
 		call(pSetBkMode, hdc, 1)
-		if s.isMuted(lp) {
+		if lp == s.linkLabel {
+			call(pSetTextColor, hdc, 0xC06700) // link blue
+		} else if s.isMuted(lp) {
 			call(pSetTextColor, hdc, uintptr(clrMuted))
 		} else {
 			call(pSetTextColor, hdc, 0x202020)
@@ -1041,7 +1138,10 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			s.drawItem(di)
 			return 1
 		}
-		if di.CtlID == idGeneral || di.CtlID == idAppearance || di.CtlID == idRulesNav {
+		if s.drawAbout(di) {
+			return 1
+		}
+		if di.CtlID == idGeneral || di.CtlID == idAppearance || di.CtlID == idRulesNav || di.CtlID == idAboutNav {
 			s.drawNav(di)
 			return 1
 		}
@@ -1058,6 +1158,7 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		}
 		call(pDeleteObject, s.font)
 		call(pDeleteObject, s.bold)
+		call(pDeleteObject, s.bigFont)
 		for _, b := range s.brushes {
 			call(pDeleteObject, b)
 		}
