@@ -12,3 +12,5 @@ dist/
 Thumbs.db
 desktop.ini
 *.exe
+Plots.exe
+Plots.old.exe
