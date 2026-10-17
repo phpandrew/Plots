@@ -22,8 +22,8 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
           check-latest: true
@@ -43,7 +43,7 @@ jobs:
             3) echo found > scan/go.status ;;
             *) echo error > scan/go.status ;;
           esac
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: scan-go
           path: scan/
@@ -55,8 +55,8 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
           check-latest: true
@@ -98,7 +98,7 @@ jobs:
             echo error > scan/codeql.status
           fi
           cat scan/codeql.txt 2>/dev/null || true
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: scan-codeql
           path: scan/
@@ -113,8 +113,8 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v6
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: scan-*
           path: scan

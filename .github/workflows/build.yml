@@ -26,9 +26,9 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           # always the newest 1.26 patch release, so standard-library security fixes are picked up
           go-version: "1.26.x"
@@ -73,7 +73,7 @@ jobs:
           cp dist/Plots.exe dist/Plots-update.exe
 
       - name: Upload build
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Plots-v${{ steps.ver.outputs.version }}
           path: dist/*.exe
@@ -95,7 +95,7 @@ jobs:
     permissions:
       contents: write # create the tag and release
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: Plots-v${{ needs.build.outputs.version }}
           path: dist
