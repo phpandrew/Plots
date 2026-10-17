@@ -1,7 +1,8 @@
 name: Build
 
 # Every push to main builds Plots.exe and publishes it as a GitHub Release
-# (v0.2.<run number>, marked "Latest"). Pull requests just build and test.
+# named after the VERSION file (e.g. v0.2.2, marked "Latest").
+# Pull requests just build and test.
 
 on:
   push:
@@ -20,11 +21,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          # always the newest 1.26 patch release, so standard-library security fixes are picked up
+          go-version: "1.26.x"
+          check-latest: true
           cache: true
 
       - name: Test
@@ -41,7 +44,17 @@ jobs:
 
       - name: Version
         id: ver
-        run: echo "version=0.2.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+        run: |
+          # The version comes from the VERSION file (e.g. 0.2.2).
+          # If that release already exists, use the next free patch number
+          # so a push never fails; bump VERSION yourself for planned releases.
+          base=$(tr -d ' \r\n' < VERSION)
+          mm=${base%.*}; p=${base##*.}
+          while git ls-remote --exit-code --tags origin "refs/tags/v$mm.$p" >/dev/null 2>&1; do p=$((p+1)); done
+          v="$mm.$p"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then v="$v-pr.${{ github.run_number }}"; fi
+          if [ "$v" != "$base" ]; then echo "::notice::VERSION says $base but it is already released; building $v"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Build Plots.exe
         env:
@@ -55,7 +68,7 @@ jobs:
           cp dist/Plots.exe dist/Plots-update.exe
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Plots-v${{ steps.ver.outputs.version }}
           path: dist/*.exe
@@ -63,13 +76,13 @@ jobs:
 
       - name: Publish release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.ver.outputs.version }}
-          name: Plots v${{ steps.ver.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          make_latest: true
-          generate_release_notes: true
-          files: |
-            dist/Plots.exe
-            dist/Plots-update.exe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # gh is preinstalled on GitHub runners (no Node-based action needed)
+          gh release create "v${{ steps.ver.outputs.version }}" \
+            dist/Plots.exe dist/Plots-update.exe \
+            --title "Plots v${{ steps.ver.outputs.version }}" \
+            --target "${{ github.sha }}" \
+            --generate-notes \
+            --latest
