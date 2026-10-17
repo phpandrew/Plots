@@ -13,6 +13,25 @@ A lightweight Stardock Fences–style organizer. Single `Plots.exe`, no installe
   <em>Settings: plots in the sidebar, with Appearance and General settings pages.</em>
 </p>
 
+## Features
+- **Plots:** translucent panels on the desktop that hold your icons. Set the title, colour, opacity and rounded corners for each one.
+- **Drag and drop:** drop an icon into a plot and it snaps into the grid and stays there. Icons auto-align with adjustable padding.
+- **Real desktop icons:** icons stay normal Explorer icons. New, renamed and deleted files show up straight away, and Plots recovers after Explorer restarts.
+- **Inbox plot:** pick one plot and every new item saved to the desktop lands in it automatically. Plots can also move finished downloads to the desktop.
+- **Sorting rules:** send files to a plot by type (images, documents, installers, archives and more).
+- **Tabs:** split one plot into two or more tabs of equal width.
+- **Roll up:** collapse a plot to its title bar with the chevron, or by double-clicking the title. Hovering a rolled-up plot shows its contents.
+- **Scrolling:** plots with more icons than fit scroll with the mouse wheel, or can grow to fit instead.
+- **Live folders:** a plot can show the contents of any folder, with thumbnails, sorting and the normal Explorer right-click menu.
+- **Move and resize anytime:** drag a plot by its title bar or edges, with snap to grid and fine control near screen edges. There's also a full edit mode.
+- **Multi-monitor:** every plot remembers its monitor and follows each monitor's DPI scale.
+- **Global look:** one header style, font, font size and colour for every plot, or set each plot on its own.
+- **Double-click to hide** (optional): hide or show all icons and plots by double-clicking empty desktop.
+- **Right-click menus** on plot title bars, and a tray icon for quick access.
+- **Starts fast** with Windows, and the desktop check interval is adjustable from 0.1 to 0.5 s.
+- **Updates itself:** checks GitHub Releases from the About page or automatically, then updates in place.
+- **Small and portable:** one `Plots.exe`, no installer, no runtime. Every release is security-scanned before it's published.
+
 ## Run it
 1. **Quit Fences first.** Both apps move the same desktop icons and will fight each other.
 2. Double-click `Plots.exe`. The Plots icon appears in the tray.

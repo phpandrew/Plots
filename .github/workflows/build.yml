@@ -1,25 +1,30 @@
 name: Build
 
-# Every push to main builds Plots.exe and publishes it as a GitHub Release
-# named after the VERSION file (e.g. v0.2.2, marked "Latest").
-# Pull requests just build and test.
+# Every push to main: test, build, run the security scans, and publish a
+# GitHub Release only if the scans are clean. Pull requests just build and
+# test (the Security workflow checks them separately).
+# See docs/SECURITY-FLOW.md.
 
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"] # docs and screenshots don't release
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 permissions:
-  contents: write # needed to create releases
+  contents: read
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
@@ -47,7 +52,7 @@ jobs:
         run: |
           # The version comes from the VERSION file (e.g. 0.2.2).
           # If that release already exists, use the next free patch number
-          # so a push never fails; bump VERSION yourself for planned releases.
+          # so a push never fails; bump VERSION yourself for a new minor/major.
           base=$(tr -d ' \r\n' < VERSION)
           mm=${base%.*}; p=${base##*.}
           while git ls-remote --exit-code --tags origin "refs/tags/v$mm.$p" >/dev/null 2>&1; do p=$((p+1)); done
@@ -74,15 +79,35 @@ jobs:
           path: dist/*.exe
           retention-days: 30
 
+  security:
+    # the release gate: govulncheck + CodeQL, issues opened/closed automatically
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
+
+  release:
+    needs: [build, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and release
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: Plots-v${{ needs.build.outputs.version }}
+          path: dist
+
       - name: Publish release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.build.outputs.version }}
         run: |
-          # gh is preinstalled on GitHub runners (no Node-based action needed)
-          gh release create "v${{ steps.ver.outputs.version }}" \
-            dist/Plots.exe dist/Plots-update.exe \
-            --title "Plots v${{ steps.ver.outputs.version }}" \
-            --target "${{ github.sha }}" \
+          gh release create "v$V" dist/Plots.exe dist/Plots-update.exe \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Plots v$V" \
+            --target "$GITHUB_SHA" \
             --generate-notes \
             --latest
