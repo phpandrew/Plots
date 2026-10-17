@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# keep shell scripts and workflows with Unix line endings for the GitHub runners
+*.sh  text eol=lf
+*.yml text eol=lf

@@ -48,7 +48,7 @@ Each plot remembers the monitor it's on, by device name, and its position on tha
 ## Building
 **Version:** the `VERSION` file holds the version (e.g. `0.2.2`). Bump it when you want a new number. If you push without bumping, CI uses the next free patch number (`0.2.3`, …), so builds never collide.
 
-**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and publishes a GitHub Release `v<VERSION>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. Drop `Plots-update.exe` next to a running Plots and it updates itself; Plots also checks Releases on its own. Pull requests only build and test.
+**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and, once the security scans pass, publishes a GitHub Release `v<VERSION>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. Drop `Plots-update.exe` next to a running Plots and it updates itself; Plots also checks Releases on its own. Pull requests only build and test.
 
 **Local build** (`build.bat` does this on Windows): it stamps `<VERSION>-dev`, so a later GitHub release of the same number counts as newer:
 ```
@@ -63,10 +63,8 @@ The icon, manifest and version info live in `rsrc_windows_*.syso`; keep those co
 Platform-independent logic (`engine.go`, `render.go`, `config.go`, `wallpaper.go`) has unit tests: `go test ./...`.
 
 ## Security
-- **Dependabot** (`.github/dependabot.yml`) opens a pull request every Monday when a Go module or GitHub Action has a new version. Related updates are grouped into one PR.
-- **Security workflow** (`.github/workflows/security.yml`) runs on every push, every PR and every Monday:
-  - **govulncheck** reports known vulnerabilities in the Go modules and Go standard library that Plots actually calls.
-  - **CodeQL** does static analysis of the source. Results appear under **Security › Code scanning**.
+Every push to `main` is scanned with **govulncheck** and **CodeQL** before it's released. A finding holds the release back and opens a `security` issue, which closes itself once a scan is clean. The scans also run daily and on pull requests. Details: [docs/SECURITY-FLOW.md](docs/SECURITY-FLOW.md). To report a vulnerability, see [SECURITY.md](.github/SECURITY.md).
+- **Dependabot** (`.github/dependabot.yml`) opens grouped pull requests every Monday for Go modules and GitHub Actions.
 - Builds always use the newest Go 1.26 patch release, so standard-library security fixes are picked up automatically.
 
 ## Layout of the code
@@ -87,7 +85,8 @@ Platform-independent logic (`engine.go`, `render.go`, `config.go`, `wallpaper.go
 | `wallpaper.go`, `wallpaper_windows.go` | Blends each panel with the wallpaper underneath it so it looks see-through |
 | `watcher_windows.go` | Watches the desktop folders and refreshes Explorer when it misses a change |
 | `fonts_windows.go` | Lists installed fonts for the Appearance page |
-| `.github/workflows/build.yml` | CI: test, vet, build `Plots.exe`, publish a release on every push to `main` |
-| `.github/workflows/security.yml`, `.github/dependabot.yml` | govulncheck, CodeQL, Dependabot update PRs |
+| `.github/workflows/build.yml` | CI: test, vet, build `Plots.exe`, run the scans, publish a release on every clean push to `main` |
+| `.github/workflows/security.yml`, `.github/scripts/security-report.sh` | govulncheck and CodeQL; opens and closes `security` issues |
+| `.github/dependabot.yml` | Dependabot update PRs |
 | `about_windows.go`, `update.go` | About page, GitHub links, update check / download from GitHub Releases |
 | `plotmodel.go` | Tabs, sorting rules and their presets |

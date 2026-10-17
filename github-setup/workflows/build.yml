@@ -1,0 +1,113 @@
+name: Build
+
+# Every push to main: test, build, run the security scans, and publish a
+# GitHub Release only if the scans are clean. Pull requests just build and
+# test (the Security workflow checks them separately).
+# See docs/SECURITY-FLOW.md.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"] # docs and screenshots don't release
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          # always the newest 1.26 patch release, so standard-library security fixes are picked up
+          go-version: "1.26.x"
+          check-latest: true
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet (Windows build)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          # Win32/COM code intentionally uses unkeyed GUID literals and uintptr<->pointer casts
+          out=$(go vet ./... 2>&1 | grep -v -e "unkeyed fields" -e "possible misuse of unsafe.Pointer" -e "^#" || true)
+          if [ -n "$out" ]; then echo "$out"; exit 1; fi
+
+      - name: Version
+        id: ver
+        run: |
+          # The version comes from the VERSION file (e.g. 0.2.2).
+          # If that release already exists, use the next free patch number
+          # so a push never fails; bump VERSION yourself for a new minor/major.
+          base=$(tr -d ' \r\n' < VERSION)
+          mm=${base%.*}; p=${base##*.}
+          while git ls-remote --exit-code --tags origin "refs/tags/v$mm.$p" >/dev/null 2>&1; do p=$((p+1)); done
+          v="$mm.$p"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then v="$v-pr.${{ github.run_number }}"; fi
+          if [ "$v" != "$base" ]; then echo "::notice::VERSION says $base but it is already released; building $v"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build Plots.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -H windowsgui -X main.version=${{ steps.ver.outputs.version }}" \
+            -o dist/Plots.exe .
+          cp dist/Plots.exe dist/Plots-update.exe
+
+      - name: Upload build
+        uses: actions/upload-artifact@v6
+        with:
+          name: Plots-v${{ steps.ver.outputs.version }}
+          path: dist/*.exe
+          retention-days: 30
+
+  security:
+    # the release gate: govulncheck + CodeQL, issues opened/closed automatically
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
+
+  release:
+    needs: [build, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and release
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: Plots-v${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "v$V" dist/Plots.exe dist/Plots-update.exe \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Plots v$V" \
+            --target "$GITHUB_SHA" \
+            --generate-notes \
+            --latest

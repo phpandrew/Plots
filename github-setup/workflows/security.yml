@@ -1,0 +1,126 @@
+name: Security
+
+# The scans that gate every release.
+#   govulncheck: known CVEs in Go modules and the Go standard library that Plots actually calls
+#   CodeQL:      bugs in our own code (security-extended queries)
+#
+# Called by Build before a release. Also runs daily (new CVEs appear against
+# unchanged code) and on pull requests. See docs/SECURITY-FLOW.md.
+
+on:
+  workflow_call:
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  schedule:
+    - cron: "23 11 * * *" # daily, 7:23 Toronto (6:23 in winter)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+      - name: govulncheck (Windows build)
+        run: |
+          mkdir -p scan
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          # scan as Windows so the *_windows.go files are included
+          set +e
+          GOOS=windows GOARCH=amd64 "$(go env GOPATH)/bin/govulncheck" ./... > scan/go.txt 2>&1
+          rc=$?
+          set -e
+          cat scan/go.txt
+          # exit 0 = clean, 3 = vulnerabilities found, anything else = the scanner broke
+          case $rc in
+            0) echo clean > scan/go.status ;;
+            3) echo found > scan/go.status ;;
+            *) echo error > scan/go.status ;;
+          esac
+      - uses: actions/upload-artifact@v6
+        with:
+          name: scan-go
+          path: scan/
+          retention-days: 7
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          build-mode: manual
+          queries: security-extended
+      - name: Build (Windows target, traced by CodeQL)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build ./...
+      - uses: github/codeql-action/analyze@v4
+        id: analyze
+        continue-on-error: true
+      - name: Collect open alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANALYZE: ${{ steps.analyze.outcome }}
+        run: |
+          mkdir -p scan
+          if [ "$ANALYZE" != "success" ]; then echo error > scan/codeql.status; exit 0; fi
+          ref="${{ github.ref }}"
+          if out=$(gh api --paginate "repos/$GITHUB_REPOSITORY/code-scanning/alerts?state=open&ref=$ref&per_page=100" \
+              --jq '.[] | "- [#\(.number)](\(.html_url)) **\(.rule.security_severity_level // .rule.severity)** `\(.rule.id)`: \(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line). \(.rule.description)"' 2>scan/err.txt); then
+            if [ -n "$out" ]; then
+              printf '%s\n' "$out" | sort > scan/codeql.txt
+              echo found > scan/codeql.status
+            else
+              echo clean > scan/codeql.status
+            fi
+          elif grep -qi "advanced security" scan/err.txt; then
+            echo "::warning::Code scanning alerts aren't readable (private repo without GitHub Advanced Security). CodeQL isn't gating this run."
+            echo skipped > scan/codeql.status
+          else
+            cat scan/err.txt
+            echo error > scan/codeql.status
+          fi
+          cat scan/codeql.txt 2>/dev/null || true
+      - uses: actions/upload-artifact@v6
+        with:
+          name: scan-codeql
+          path: scan/
+          retention-days: 7
+
+  report:
+    # Turns the results into issues and decides pass/fail.
+    needs: [govulncheck, codeql]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: scan-*
+          path: scan
+          merge-multiple: true
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/security-report.sh scan
