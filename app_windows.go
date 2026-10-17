@@ -25,6 +25,10 @@ const (
 	msgDragStart    = WM_APP + 20
 	msgDragMove     = WM_APP + 21
 	msgDragEnd      = WM_APP + 22
+	msgToggleRoll   = WM_APP + 23
+	msgSelectTab    = WM_APP + 24
+	msgScroll       = WM_APP + 25
+	msgPeek         = WM_APP + 26
 
 	timerTick = 1
 )
@@ -218,6 +222,17 @@ func (a *App) shutdown() {
 	if a.desk != nil && isWindow(a.desk.ListView) {
 		call(pShowWindow, a.desk.ListView, SW_SHOWNA)
 	}
+	// bring hidden icons (other tabs, rolled-up, scrolled) back on screen
+	if a.fv != nil && a.desk != nil {
+		if _, origin, err := a.readItems(); err == nil {
+			moves := a.eng.UnparkAll()
+			m := make(map[string]Point, len(moves))
+			for _, mv := range moves {
+				m[mv.Path] = mv.To.Sub(origin)
+			}
+			a.fv.Position(m)
+		}
+	}
 	for id := range a.panels {
 		a.destroyPanel(id)
 	}
@@ -270,6 +285,42 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case msgDragEnd:
 		a.dragEnd()
+		return 0
+	case msgToggleRoll:
+		if p := a.plotAtIndex(wp); p != nil {
+			p.Collapsed = !p.Collapsed
+			a.eng.Peek = ""
+			a.markDirty()
+			a.tick()
+		}
+		return 0
+	case msgSelectTab:
+		if p := a.plotAtIndex(wp); p != nil && int(lp) < len(p.Tabs) {
+			p.ActiveTab, p.Scroll = int(lp), 0
+			a.markDirty()
+			a.tick()
+		}
+		return 0
+	case msgScroll:
+		if p := a.plotAtIndex(wp); p != nil {
+			if int16(lp) > 0 {
+				p.Scroll--
+			} else {
+				p.Scroll++
+			}
+			if p.Scroll < 0 {
+				p.Scroll = 0
+			}
+			a.tick()
+		}
+		return 0
+	case msgPeek:
+		if p := a.plotAtIndex(wp); p != nil {
+			a.eng.Peek = p.ID
+		} else {
+			a.eng.Peek = ""
+		}
+		a.tick()
 		return 0
 	case msgDesktopChanged:
 		call(pSetTimer, a.main, timerVerify, uintptr(a.cfg.PollMs), 0) // debounce bursts of changes
@@ -430,9 +481,16 @@ func (a *App) tick() {
 		// icons now would cancel the rename, so wait until it is done
 		return
 	}
+	a.eng.ParkAt = a.parkPoint()
 	moves := a.eng.Reconcile(items)
 	if len(moves) > 0 {
-		log.Printf("moving %d icons", len(moves))
+		parked := 0
+		for _, mv := range moves {
+			if mv.To == a.eng.ParkAt {
+				parked++
+			}
+		}
+		log.Printf("moving %d icons (%d hidden off-screen at %v)", len(moves), parked, a.eng.ParkAt)
 		m := make(map[string]Point, len(moves))
 		for _, mv := range moves {
 			m[mv.Path] = mv.To.Sub(origin)
@@ -469,13 +527,36 @@ func (a *App) renderOpts(p *Plot, v *PlotView, edit bool) RenderOpts {
 		FontFile: fontFile(c.TitleFont), Header: c.HeaderStyle, Grip: c.DirectEdit && !edit,
 		HeaderCol: ParseHex(c.HeaderColor), TitleCol: ParseHex(c.TitleColor),
 		Inbox: c.InboxPlot == p.ID, Edit: edit, Selected: edit && a.selected == p.ID,
+		Chevron: !edit, Collapsed: v.Collapsed, TabNames: p.TabNames(), ActiveTab: p.ActiveTab,
+		TabBar: v.TabBar.Sub(v.Rect), TabRects: relRects(v.Tabs, v.Rect),
+		ScrollPos: v.Scroll, ScrollMax: v.MaxScroll, Rows: v.Rows,
 	}
+}
+
+func relRects(rs []Rect, base Rect) []Rect {
+	out := make([]Rect, len(rs))
+	for i, r := range rs {
+		out[i] = r.Sub(base)
+	}
+	return out
+}
+
+func (a *App) plotAtIndex(i uintptr) *Plot {
+	if int(i) >= 0 && int(i) < len(a.cfg.Plots) {
+		return a.cfg.Plots[i]
+	}
+	return nil
+}
+
+func (a *App) IsDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
 }
 
 // lookKey changes whenever anything affecting a plot's appearance changes.
 func (a *App) lookKey(o RenderOpts) string {
-	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d", o.Title, o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
-		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H)
+	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d|%v|%v|%d|%v|%d/%d/%d", o.Title, o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
+		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows)
 }
 
 func (a *App) setHidden(h bool) {
@@ -526,9 +607,20 @@ func (a *App) publishHookState() {
 	}
 	for _, v := range a.eng.Views() {
 		st.titles = append(st.titles, titleRect{v.ID, v.Title})
-		st.plots = append(st.plots, plotZone{v.ID, v.Rect, v.Title, int(math.Round(8 * v.Scale))})
+		idx := 0
+		rolled := false
+		for i, p := range a.cfg.Plots {
+			if p.ID == v.ID {
+				idx, rolled = i, p.Collapsed
+			}
+		}
+		st.plots = append(st.plots, plotZone{id: v.ID, idx: idx, rect: v.Rect, title: v.Title, chevron: v.Chevron,
+			tabs: v.Tabs, edge: int(math.Round(8 * v.Scale)), collapsed: v.Collapsed, rolled: rolled, scrolls: v.MaxScroll > 0})
 	}
-	for _, pos := range a.eng.last {
+	for path, pos := range a.eng.last {
+		if a.eng.IsParked(path) {
+			continue
+		}
 		st.icons = append(st.icons, RectWH(pos.X-a.cfg.IconOffsetX-a.eng.Nudge(), pos.Y-a.cfg.IconOffsetY, a.eng.Spacing.X, a.eng.Spacing.Y))
 	}
 	setHookState(st)
@@ -580,4 +672,16 @@ func (a *App) checkUpdate() {
 // renaming reports whether Explorer has an in-place name edit box open on the desktop.
 func (a *App) renaming() bool {
 	return a.desk != nil && findWindowEx(a.desk.ListView, 0, "Edit") != 0
+}
+
+// parkPoint is an off-screen spot (below all monitors) where hidden icons wait.
+func (a *App) parkPoint() Point {
+	v := Rect{}
+	for i, m := range a.mons {
+		if i == 0 {
+			v = m.Rect
+		}
+		v = Rect{min(v.L, m.Rect.L), min(v.T, m.Rect.T), max(v.R, m.Rect.R), max(v.B, m.Rect.B)}
+	}
+	return Point{v.L + 20, v.B + 400}
 }

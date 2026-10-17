@@ -97,6 +97,7 @@ var (
 	pSetTextColor               = gdi32.NewProc("SetTextColor")
 	pDrawTextW                  = user32.NewProc("DrawTextW")
 	pGetKeyState                = user32.NewProc("GetKeyState")
+	pGetFocus                   = user32.NewProc("GetFocus")
 	pGetWindow                  = user32.NewProc("GetWindow")
 	pIsWindowEnabled            = user32.NewProc("IsWindowEnabled")
 	pDrawFocusRect              = user32.NewProc("DrawFocusRect")

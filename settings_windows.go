@@ -53,6 +53,18 @@ type Settings struct {
 	direct      HWND
 	comboIDs    []string
 	lookPage    []HWND
+	rulesPage   []HWND
+	rulesBtn    HWND
+	ruleList    HWND
+	presetCombo HWND
+	patEdit     HWND
+	rulePlot    HWND
+	ruleTab     HWND
+	ruleStatus  HWND
+	ruleSel     int
+	tabsEdit    HWND
+	rollToggle  HWND
+	grow        HWND
 	lookBtn     HWND
 	fontCombo   HWND
 	sizeBar     HWND
@@ -107,6 +119,18 @@ const (
 	idUniChoose
 	idUniOpacity
 	idPoll
+	idTabs
+	idRoll
+	idGrow
+	idRulesNav
+	idRuleList
+	idPreset
+	idPattern
+	idRulePlot
+	idRuleTab
+	idRuleAdd
+	idRuleDel
+	idRuleApply
 )
 
 var settingsProc uintptr
@@ -201,13 +225,14 @@ func (s *Settings) build(sc func(int) int) {
 	// sidebar
 	h := s.ctl(0, "STATIC", "Plots", SS_LEFT, sc(20), sc(18), sc(220), sc(26), 0)
 	sendMessage(h, WM_SETFONT, s.bold, 1)
-	s.list = s.ctl(0, "LISTBOX", "", WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS, sc(12), sc(52), sc(sbW-24), sc(290), idList)
-	s.ctl(0, "BUTTON", "+  Add plot", BTN, sc(12), sc(348), sc(114), sc(32), idAdd)
-	s.ctl(0, "BUTTON", "Delete", BTN, sc(134), sc(348), sc(114), sc(32), idDelete)
-	s.lookBtn = s.ctl(0, "BUTTON", "Appearance", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(404), sc(sbW-24), sc(36), idAppearance)
-	s.genBtn = s.ctl(0, "BUTTON", "General settings", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(444), sc(sbW-24), sc(36), idGeneral)
-	s.ctl(0, "BUTTON", "Refresh desktop", BTN, sc(12), sc(490), sc(236), sc(32), idRefresh)
-	s.muted = append(s.muted, s.ctl(0, "STATIC", "Plots "+displayVersion(), SS_LEFT, sc(20), sc(532), sc(220), sc(18), 0))
+	s.list = s.ctl(0, "LISTBOX", "", WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS, sc(12), sc(52), sc(sbW-24), sc(248), idList)
+	s.ctl(0, "BUTTON", "+  Add plot", BTN, sc(12), sc(306), sc(114), sc(32), idAdd)
+	s.ctl(0, "BUTTON", "Delete", BTN, sc(134), sc(306), sc(114), sc(32), idDelete)
+	s.lookBtn = s.ctl(0, "BUTTON", "Appearance", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(352), sc(sbW-24), sc(36), idAppearance)
+	s.rulesBtn = s.ctl(0, "BUTTON", "Sorting rules", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(390), sc(sbW-24), sc(36), idRulesNav)
+	s.genBtn = s.ctl(0, "BUTTON", "General settings", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(12), sc(428), sc(sbW-24), sc(36), idGeneral)
+	s.ctl(0, "BUTTON", "Refresh desktop", BTN, sc(12), sc(478), sc(236), sc(32), idRefresh)
+	s.muted = append(s.muted, s.ctl(0, "STATIC", "Plots "+displayVersion(), SS_LEFT, sc(20), sc(524), sc(220), sc(18), 0))
 
 	fw := colR - colF
 	w := colR - colL
@@ -229,6 +254,11 @@ func (s *Settings) build(sc func(int) int) {
 	s.inbox = pg(s.ctl(0, "BUTTON", "New items saved to the desktop go into this plot", CHK, sc(colL), sc(188), sc(w), sc(32), idInbox))
 	toggleState[s.inbox] = false
 	s.monLabel = pg(s.ctl(0, "STATIC", "", SS_LEFT, sc(colL), sc(226), sc(w), sc(20), 0))
+	pg(s.ctl(0, "STATIC", "Tabs", SS_LEFT, sc(colL), sc(270), sc(100), sc(20), 0))
+	s.tabsEdit = pg(s.ctl(WS_EX_CLIENTEDGE, "EDIT", "", WS_TABSTOP|ES_AUTOHSCROLL, sc(colF), sc(266), sc(fw), sc(28), idTabs))
+	s.muted = append(s.muted, pg(s.ctl(0, "STATIC", "Separate tab names with commas, e.g. Orders, Audits, Designs. Leave empty for no tabs. Drop an icon on a tab to file it there.", SS_LEFT, sc(colF), sc(300), sc(fw), sc(40), 0)))
+	s.rollToggle = pg(s.ctl(0, "BUTTON", "Rolled up (only the title bar shows; hover to peek)", CHK, sc(colL), sc(348), sc(w), sc(32), idRoll))
+	toggleState[s.rollToggle] = false
 	s.muted = append(s.muted, s.monLabel)
 
 	// ---- appearance page (applies to every plot)
@@ -269,6 +299,30 @@ func (s *Settings) build(sc func(int) int) {
 	label("Opacity", 412)
 	s.uniBar, s.uniLabel = slider(412, 0, 100, idUniOpacity)
 
+	// ---- sorting rules page
+	rp := func(h HWND) HWND { s.rulesPage = append(s.rulesPage, h); return h }
+	h = rp(s.ctl(0, "STATIC", "Sorting rules", SS_LEFT, sc(colL), sc(18), sc(w), sc(26), 0))
+	sendMessage(h, WM_SETFONT, s.bold, 1)
+	s.muted = append(s.muted, rp(s.ctl(0, "STATIC", "New files on the desktop that match a rule go straight to that plot. Anything else goes to your new-items plot.", SS_LEFT, sc(colL), sc(46), sc(w), sc(36), 0)))
+	s.ruleList = rp(s.ctl(WS_EX_CLIENTEDGE, "LISTBOX", "", WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT, sc(colL), sc(86), sc(w), sc(132), idRuleList))
+	rp(s.ctl(0, "STATIC", "Quick pick", SS_LEFT, sc(colL), sc(234), sc(100), sc(20), 0))
+	s.presetCombo = rp(s.ctl(0, "COMBOBOX", "", WS_TABSTOP|WS_VSCROLL|0x3, sc(colF), sc(230), sc(fw), sc(300), idPreset))
+	sendMessage(s.presetCombo, 0x143, 0, up("Choose a file type…"))
+	for _, pr := range RulePresets {
+		sendMessage(s.presetCombo, 0x143, 0, up(pr.Name+"  ("+pr.Pattern+")"))
+	}
+	rp(s.ctl(0, "STATIC", "File types", SS_LEFT, sc(colL), sc(274), sc(100), sc(20), 0))
+	s.patEdit = rp(s.ctl(WS_EX_CLIENTEDGE, "EDIT", "", WS_TABSTOP|ES_AUTOHSCROLL, sc(colF), sc(270), sc(fw), sc(28), idPattern))
+	rp(s.ctl(0, "STATIC", "Goes to plot", SS_LEFT, sc(colL), sc(314), sc(100), sc(20), 0))
+	s.rulePlot = rp(s.ctl(0, "COMBOBOX", "", WS_TABSTOP|WS_VSCROLL|0x3, sc(colF), sc(310), sc(fw), sc(300), idRulePlot))
+	rp(s.ctl(0, "STATIC", "Tab", SS_LEFT, sc(colL), sc(354), sc(100), sc(20), 0))
+	s.ruleTab = rp(s.ctl(0, "COMBOBOX", "", WS_TABSTOP|WS_VSCROLL|0x3, sc(colF), sc(350), sc(fw), sc(300), idRuleTab))
+	rp(s.ctl(0, "BUTTON", "+  Add rule", BTN, sc(colL), sc(394), sc(120), sc(32), idRuleAdd))
+	rp(s.ctl(0, "BUTTON", "Delete rule", BTN, sc(colL+128), sc(394), sc(120), sc(32), idRuleDel))
+	rp(s.ctl(0, "BUTTON", "Sort my desktop now", BTN, sc(colR-180), sc(394), sc(180), sc(32), idRuleApply))
+	s.ruleStatus = rp(s.ctl(0, "STATIC", "Patterns look like *.pdf;*.docx — use \"folder\" for folders. Rules are checked top to bottom.", SS_LEFT, sc(colL), sc(436), sc(w), sc(36), 0))
+	s.muted = append(s.muted, s.ruleStatus)
+
 	// ---- general page
 	h = gp(s.ctl(0, "STATIC", "General settings", SS_LEFT, sc(colL), sc(18), sc(w), sc(26), 0))
 	sendMessage(h, WM_SETFONT, s.bold, 1)
@@ -279,10 +333,11 @@ func (s *Settings) build(sc func(int) int) {
 	row := func(text string, id int) HWND {
 		c := gp(s.ctl(0, "BUTTON", text, CHK, sc(colL), sc(y), sc(w), sc(32), id))
 		toggleState[c] = false
-		y += 38
+		y += 34
 		return c
 	}
 	s.direct = row("Move and resize plots any time (drag the title bar or edges)", idDirect)
+	s.grow = row("Grow plots to fit their icons (off: plots keep their size and scroll)", idGrow)
 	s.snap = row("Snap plots to the icon grid and to each other (hold Alt to override)", idSnap)
 	s.dbl = row("Double-click empty desktop to hide / show icons", idDbl)
 	s.startup = row("Start Plots with Windows", idStartup)
@@ -317,7 +372,11 @@ func (s *Settings) showPage(name string) {
 	vis(s.plotPage, false)
 	vis(s.genPage, false)
 	vis(s.lookPage, false)
+	vis(s.rulesPage, false)
 	switch name {
+	case "rules":
+		vis(s.rulesPage, true)
+		s.refreshRules()
 	case "plot":
 		vis(s.plotPage, true)
 	case "general":
@@ -332,6 +391,7 @@ func (s *Settings) showPage(name string) {
 	}
 	call(pInvalidateRect, s.genBtn, 0, 1)
 	call(pInvalidateRect, s.lookBtn, 0, 1)
+	call(pInvalidateRect, s.rulesBtn, 0, 1)
 	call(pInvalidateRect, s.hwnd, 0, 1)
 }
 
@@ -418,8 +478,11 @@ func (s *Settings) drawToggle(di *DRAWITEMSTRUCT) {
 func (s *Settings) drawNav(di *DRAWITEMSTRUCT) {
 	hdc, r := di.HDC, di.RcItem
 	page, label := "general", "General settings"
-	if di.CtlID == idAppearance {
+	switch di.CtlID {
+	case idAppearance:
 		page, label = "look", "Appearance"
+	case idRulesNav:
+		page, label = "rules", "Sorting rules"
 	}
 	active := s.page == page
 	bg := clrSide
@@ -434,7 +497,14 @@ func (s *Settings) drawNav(di *DRAWITEMSTRUCT) {
 	old := call(pSelectObject, hdc, s.font)
 	call(pSetTextColor, hdc, 0x202020)
 	gx, gy := r.Left+int32(s.sc(12)), r.Top+(r.Bottom-r.Top)/2
-	if page == "general" {
+	if page == "rules" {
+		// funnel: three bars getting shorter, centred
+		for i, w := range []int32{16, 10, 4} {
+			y := gy - int32(s.sc(6)) + int32(s.sc(5*i))
+			x := gx + (int32(s.sc(16))-int32(s.sc(int(w))))/2
+			fillRect(hdc, RECT{x, y, x + int32(s.sc(int(w))), y + int32(max(1, s.sc(2)))}, clrMuted)
+		}
+	} else if page == "general" {
 		// three bars (settings sliders)
 		for i, w := range []int32{16, 11, 14} {
 			y := gy - int32(s.sc(6)) + int32(s.sc(5*i))
@@ -582,6 +652,10 @@ func (s *Settings) loadPlot() {
 		setWindowText(s.title, p.Title)
 	}
 	setWindowText(s.plotHeader, p.Title)
+	if names := s.tabNamesText(p); windowText(s.tabsEdit) != names && call(pGetFocus) != s.tabsEdit {
+		setWindowText(s.tabsEdit, names)
+	}
+	setCheck(s.rollToggle, p.Collapsed)
 	var en uintptr = 1
 	if s.a.cfg.UniformLook {
 		en = 0 // colour & opacity come from Appearance
@@ -632,6 +706,7 @@ func (s *Settings) refreshGeneral() {
 	setCheck(s.flags, c.ManageDesktopFlags)
 	setCheck(s.snap, c.SnapToGrid)
 	setCheck(s.direct, c.DirectEdit)
+	setCheck(s.grow, c.GrowToFit)
 	sendMessage(s.pollBar, TBM_SETPOS, 1, uintptr(c.PollMs/100))
 	setWindowText(s.pollLabel, fmt.Sprintf("%.1f s", float64(c.PollMs)/1000))
 	sendMessage(s.inboxCombo, 0x14B /*CB_RESETCONTENT*/, 0, 0)
@@ -707,6 +782,91 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			}
 		case idGeneral:
 			s.showPage("general")
+		case idRulesNav:
+			s.showPage("rules")
+		case idTabs:
+			if code == EN_CHANGE && p != nil {
+				p.SetTabNames(strings.Split(windowText(s.tabsEdit), ","))
+				a.markDirty()
+				a.eng.Relayout()
+				a.tick()
+			}
+		case idRoll:
+			if p != nil {
+				p.Collapsed = checked(s.rollToggle)
+				a.markDirty()
+				a.tick()
+			}
+		case idGrow:
+			a.cfg.GrowToFit = checked(s.grow)
+			a.markDirty()
+			a.eng.Relayout()
+			a.tick()
+		case idRuleList:
+			if code == LBN_SELCHANGE {
+				s.ruleSel = int(sendMessage(s.ruleList, LB_GETCURSEL, 0, 0))
+				s.loadRule()
+			}
+		case idPreset:
+			if code == 1 {
+				i := int(sendMessage(s.presetCombo, 0x147, 0, 0)) - 1
+				if i >= 0 && i < len(RulePresets) {
+					if r := s.curRule(); r == nil {
+						s.addRule(RulePresets[i].Pattern)
+					} else {
+						r.Pattern = RulePresets[i].Pattern
+						s.ruleEdited()
+					}
+				}
+				sendMessage(s.presetCombo, 0x14E, 0, 0)
+			}
+		case idPattern:
+			if code == EN_CHANGE {
+				if r := s.curRule(); r != nil {
+					r.Pattern = windowText(s.patEdit)
+					s.ruleEdited()
+				}
+			}
+		case idRulePlot:
+			if code == 1 {
+				if r := s.curRule(); r != nil {
+					i := int(sendMessage(s.rulePlot, 0x147, 0, 0))
+					if i >= 0 && i < len(a.cfg.Plots) {
+						r.PlotID = a.cfg.Plots[i].ID
+						r.Tab = ""
+						s.ruleEdited()
+						s.loadRule()
+					}
+				}
+			}
+		case idRuleTab:
+			if code == 1 {
+				if r := s.curRule(); r != nil {
+					if rp := a.cfg.Plot(r.PlotID); rp != nil {
+						i := int(sendMessage(s.ruleTab, 0x147, 0, 0))
+						if i >= 0 && i < len(rp.Tabs) {
+							r.Tab = rp.Tabs[i].Name
+							s.ruleEdited()
+						}
+					}
+				}
+			}
+		case idRuleAdd:
+			s.addRule("")
+			call(pSetFocus, s.patEdit)
+		case idRuleDel:
+			if s.ruleSel >= 0 && s.ruleSel < len(a.cfg.Rules) {
+				a.cfg.Rules = append(a.cfg.Rules[:s.ruleSel], a.cfg.Rules[s.ruleSel+1:]...)
+				if s.ruleSel >= len(a.cfg.Rules) {
+					s.ruleSel = len(a.cfg.Rules) - 1
+				}
+				a.markDirty()
+				s.refreshRules()
+			}
+		case idRuleApply:
+			n := a.eng.ApplyRules()
+			a.tick()
+			setWindowText(s.ruleStatus, fmt.Sprintf("Sorted %d icon(s) using your rules.", n))
 		case idAppearance:
 			s.showPage("look")
 		case idFont:
@@ -881,7 +1041,7 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			s.drawItem(di)
 			return 1
 		}
-		if di.CtlID == idGeneral || di.CtlID == idAppearance {
+		if di.CtlID == idGeneral || di.CtlID == idAppearance || di.CtlID == idRulesNav {
 			s.drawNav(di)
 			return 1
 		}
@@ -979,4 +1139,123 @@ func displayVersion() string {
 		v = "v" + v
 	}
 	return v
+}
+
+func (s *Settings) tabNamesText(p *Plot) string {
+	if len(p.Tabs) <= 1 {
+		return p.Tabs[0].Name
+	}
+	var names []string
+	for _, t := range p.Tabs {
+		names = append(names, t.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func (s *Settings) curRule() *Rule {
+	if s.ruleSel >= 0 && s.ruleSel < len(s.a.cfg.Rules) {
+		return s.a.cfg.Rules[s.ruleSel]
+	}
+	return nil
+}
+
+func ruleLabel(c *Config, r *Rule) string {
+	dest := "(choose a plot)"
+	if p := c.Plot(r.PlotID); p != nil {
+		dest = p.Title
+		if len(p.Tabs) > 1 {
+			dest += " › " + p.TabByName(r.Tab).Name
+		}
+	}
+	pat := r.Pattern
+	if strings.TrimSpace(pat) == "" {
+		pat = "(no file types yet)"
+	}
+	return pat + "   →   " + dest
+}
+
+func (s *Settings) addRule(pattern string) {
+	c := s.a.cfg
+	r := &Rule{Pattern: pattern}
+	if len(c.Plots) > 0 {
+		r.PlotID = c.Plots[0].ID
+	}
+	c.Rules = append(c.Rules, r)
+	s.ruleSel = len(c.Rules) - 1
+	s.a.markDirty()
+	s.refreshRules()
+}
+
+// ruleEdited refreshes the selected row without disturbing the edit box.
+func (s *Settings) ruleEdited() {
+	s.a.markDirty()
+	if r := s.curRule(); r != nil {
+		s.loading = true
+		sendMessage(s.ruleList, 0x182 /*LB_DELETESTRING*/, uintptr(s.ruleSel), 0)
+		sendMessage(s.ruleList, 0x181 /*LB_INSERTSTRING*/, uintptr(s.ruleSel), up(ruleLabel(s.a.cfg, r)))
+		sendMessage(s.ruleList, LB_SETCURSEL, uintptr(s.ruleSel), 0)
+		s.loading = false
+	}
+	s.a.save(false)
+}
+
+func (s *Settings) refreshRules() {
+	if s == nil || !isWindow(s.hwnd) {
+		return
+	}
+	s.loading = true
+	sendMessage(s.ruleList, LB_RESETCONTENT, 0, 0)
+	for _, r := range s.a.cfg.Rules {
+		sendMessage(s.ruleList, LB_ADDSTRING, 0, up(ruleLabel(s.a.cfg, r)))
+	}
+	if s.ruleSel >= len(s.a.cfg.Rules) {
+		s.ruleSel = len(s.a.cfg.Rules) - 1
+	}
+	if s.ruleSel < 0 && len(s.a.cfg.Rules) > 0 {
+		s.ruleSel = 0
+	}
+	sendMessage(s.ruleList, LB_SETCURSEL, uintptr(s.ruleSel), 0)
+	s.loading = false
+	s.loadRule()
+}
+
+func (s *Settings) loadRule() {
+	s.loading = true
+	defer func() { s.loading = false }()
+	c := s.a.cfg
+	sendMessage(s.rulePlot, 0x14B, 0, 0)
+	for _, p := range c.Plots {
+		sendMessage(s.rulePlot, 0x143, 0, up(p.Title))
+	}
+	sendMessage(s.ruleTab, 0x14B, 0, 0)
+	r := s.curRule()
+	var en uintptr
+	if r != nil {
+		en = 1
+	}
+	for _, h := range []HWND{s.patEdit, s.rulePlot, s.ruleTab} {
+		call(pEnableWindow, h, en)
+	}
+	if r == nil {
+		setWindowText(s.patEdit, "")
+		return
+	}
+	if windowText(s.patEdit) != r.Pattern {
+		setWindowText(s.patEdit, r.Pattern)
+	}
+	for i, p := range c.Plots {
+		if p.ID == r.PlotID {
+			sendMessage(s.rulePlot, 0x14E, uintptr(i), 0)
+			for j, t := range p.Tabs {
+				name := t.Name
+				if name == "" {
+					name = "(only tab)"
+				}
+				sendMessage(s.ruleTab, 0x143, 0, up(name))
+				if strings.EqualFold(t.Name, r.Tab) || (r.Tab == "" && j == 0) {
+					sendMessage(s.ruleTab, 0x14E, uintptr(j), 0)
+				}
+			}
+		}
+	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,14 @@ func (p Point) Sub(q Point) Point    { return Point{p.X - q.X, p.Y - q.Y} }
 func dist(a, b Point) float64        { return math.Hypot(float64(a.X-b.X), float64(a.Y-b.Y)) }
 func RectWH(x, y, w, h int) Rect     { return Rect{x, y, x + w, y + h} }
 
+// Sub expresses r relative to base's top-left.
+func (r Rect) Sub(base Rect) Rect {
+	if r == (Rect{}) {
+		return r
+	}
+	return Rect{r.L - base.L, r.T - base.T, r.R - base.L, r.B - base.T}
+}
+
 type Item struct {
 	Path string
 	Pos  Point // screen coords of the item's top-left
@@ -33,14 +42,22 @@ type Move struct {
 
 // PlotView is the computed on-screen geometry of a plot for the current tick.
 type PlotView struct {
-	ID    string
-	Rect  Rect // effective rect (grown to fit icons), screen coords
-	Title Rect
-	Grid  Point // top-left of first icon cell
-	Cols  int
-	Scale float64
-	Count int // icons present
-	Paths []string
+	ID        string
+	Rect      Rect // effective rect (grown to fit icons / rolled up), screen coords
+	Title     Rect
+	Chevron   Rect   // roll-up button in the title bar
+	TabBar    Rect   // empty when the plot has a single tab
+	Tabs      []Rect // one per tab
+	Grid      Point  // top-left of first icon cell
+	Cols      int
+	Rows      int // visible rows
+	Scale     float64
+	Count     int      // icons present in the active tab
+	Paths     []string // icons shown, in cell order
+	Parked    []string // icons hidden (other tabs, scrolled away, rolled up)
+	Scroll    int      // first visible row
+	MaxScroll int
+	Collapsed bool
 }
 
 type ClickHint struct {
@@ -54,6 +71,8 @@ type Env interface {
 	PlotRect(p *Plot) (Rect, float64)
 	// FileGone reports whether a desktop item path no longer exists at all.
 	FileGone(path string) bool
+	// IsDir reports whether a desktop item is a folder.
+	IsDir(path string) bool
 }
 
 type placement struct {
@@ -69,9 +88,14 @@ type Engine struct {
 	Now     func() time.Time
 	Dirty   bool
 
-	views   []*PlotView
-	last    map[string]Point
-	placed  map[string]*placement
+	views  []*PlotView
+	last   map[string]Point
+	placed map[string]*placement
+	parked map[string]bool
+	// ParkAt is an off-screen spot where hidden icons wait (screen coords).
+	ParkAt Point
+	// Peek temporarily shows a rolled-up plot (mouse hovering its title).
+	Peek    string
 	started bool
 	Clicks  []ClickHint // recent user clicks on the desktop (drop / new-item hints)
 	Logf    func(format string, args ...any)
@@ -88,7 +112,7 @@ func (e *Engine) logf(f string, a ...any) {
 
 func NewEngine(cfg *Config, env Env) *Engine {
 	return &Engine{Cfg: cfg, Env: env, Spacing: Point{75, 100}, Now: time.Now,
-		last: map[string]Point{}, placed: map[string]*placement{}}
+		last: map[string]Point{}, placed: map[string]*placement{}, parked: map[string]bool{}, ParkAt: Point{-32000, -32000}}
 }
 
 func (e *Engine) Views() []*PlotView { return e.views }
@@ -111,6 +135,9 @@ func (c *Config) Pad(scale float64) int {
 	return int(math.Round(float64(p) * scale))
 }
 
+// TabBarH is the height of the tab strip.
+func TabBarH(scale float64) int { return int(math.Round(26 * scale)) }
+
 func (e *Engine) computeViews(present map[string]Point) {
 	sx, sy := e.Spacing.X, e.Spacing.Y
 	if sx < 16 {
@@ -121,28 +148,73 @@ func (e *Engine) computeViews(present map[string]Point) {
 	}
 	views := make([]*PlotView, 0, len(e.Cfg.Plots))
 	for _, p := range e.Cfg.Plots {
+		p.Norm()
 		r, scale := e.Env.PlotRect(p)
 		th, pad := e.Cfg.TitleH(scale), e.Cfg.Pad(scale)
+		tabH := 0
+		if len(p.Tabs) > 1 {
+			tabH = TabBarH(scale)
+		}
 		cols := (r.W() - 2*pad) / sx
 		if cols < 1 {
 			cols = 1
 		}
 		v := &PlotView{ID: p.ID, Scale: scale, Cols: cols}
-		for _, path := range p.Items {
-			if _, ok := present[path]; ok {
-				v.Paths = append(v.Paths, path)
+		v.Collapsed = p.Collapsed && e.Peek != p.ID
+		var shown []string
+		for ti, t := range p.Tabs {
+			for _, path := range t.Items {
+				if _, ok := present[path]; !ok {
+					continue
+				}
+				if ti == p.ActiveTab && !v.Collapsed {
+					shown = append(shown, path)
+				} else {
+					v.Parked = append(v.Parked, path)
+				}
 			}
 		}
-		v.Count = len(v.Paths)
+		v.Count = len(shown)
 		rows := (v.Count + cols - 1) / cols
-		need := th + pad + rows*sy + pad
-		if r.H() < need {
-			r.B = r.T + need
-		}
-		v.Rect = r
 		v.Title = Rect{r.L, r.T, r.R, r.T + th}
+		v.Chevron = Rect{r.R - th, r.T, r.R, r.T + th}
+		if v.Collapsed {
+			r.B = r.T + th
+		} else {
+			need := th + tabH + pad + rows*sy + pad
+			if e.Cfg.GrowToFit {
+				if r.H() < need {
+					r.B = r.T + need
+				}
+				v.Rows = rows
+			} else {
+				capRows := max(1, (r.H()-th-tabH-2*pad)/sy)
+				v.Rows = capRows
+				if rows > capRows {
+					v.MaxScroll = rows - capRows
+				}
+				if p.Scroll > v.MaxScroll {
+					p.Scroll = v.MaxScroll
+				}
+				v.Scroll = p.Scroll
+				first, last := v.Scroll*cols, min(len(shown), (v.Scroll+capRows)*cols)
+				v.Parked = append(v.Parked, shown[:first]...)
+				v.Parked = append(v.Parked, shown[last:]...)
+				shown = shown[first:last]
+			}
+			if tabH > 0 {
+				v.TabBar = Rect{r.L, r.T + th, r.R, r.T + th + tabH}
+				tw := min(int(170*scale), (r.W()-2*pad)/len(p.Tabs))
+				for i := range p.Tabs {
+					x := r.L + pad + i*tw
+					v.Tabs = append(v.Tabs, Rect{x, v.TabBar.T, x + tw, v.TabBar.B})
+				}
+			}
+		}
+		v.Paths = shown
+		v.Rect = r
 		// equal side margins so labels never hang over the plot edge
-		v.Grid = Point{r.L + max(pad, (r.W()-cols*sx)/2), r.T + th + pad}
+		v.Grid = Point{r.L + max(pad, (r.W()-cols*sx)/2), r.T + th + tabH + pad}
 		views = append(views, v)
 	}
 	e.views = views
@@ -197,7 +269,7 @@ func (e *Engine) dropIndex(v *PlotView, c Point) int {
 	if col >= v.Cols {
 		col = v.Cols - 1
 	}
-	return row*v.Cols + col
+	return (row+v.Scroll)*v.Cols + col
 }
 
 // Nudge is the gap between a cell's left edge and its icon image.
@@ -214,14 +286,22 @@ func (e *Engine) center(pos Point) Point {
 }
 
 func (e *Engine) owner(path string) *Plot {
+	p, _ := e.ownerTab(path)
+	return p
+}
+
+func (e *Engine) ownerTab(path string) (*Plot, *Tab) {
 	for _, p := range e.Cfg.Plots {
-		for _, it := range p.Items {
-			if it == path {
-				return p
+		p.Norm()
+		for _, t := range p.Tabs {
+			for _, it := range t.Items {
+				if it == path {
+					return p, t
+				}
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func removeStr(list []string, s string) []string {
@@ -236,36 +316,64 @@ func removeStr(list []string, s string) []string {
 
 func (e *Engine) unassign(path string) {
 	for _, p := range e.Cfg.Plots {
-		p.Items = removeStr(p.Items, path)
+		p.Norm()
+		for _, t := range p.Tabs {
+			t.Items = removeStr(t.Items, path)
+		}
 	}
 	delete(e.placed, path)
 	e.Dirty = true
 }
 
-// insertAt places path into plot p before the present item at index idx.
-func (e *Engine) insertAt(p *Plot, path string, idx int, present map[string]Point) {
+// insertAt places path into tab t before the present item at index idx.
+func (e *Engine) insertAt(t *Tab, path string, idx int, present map[string]Point) {
 	e.unassign(path)
 	presentIdx := 0
-	for i, it := range p.Items {
+	for i, it := range t.Items {
 		if _, ok := present[it]; !ok {
 			continue
 		}
 		if presentIdx == idx {
-			p.Items = append(p.Items[:i], append([]string{path}, p.Items[i:]...)...)
+			t.Items = append(t.Items[:i], append([]string{path}, t.Items[i:]...)...)
 			return
 		}
 		presentIdx++
 	}
-	p.Items = append(p.Items, path)
+	t.Items = append(t.Items, path)
+}
+
+// appendTo adds path to the end of a tab (removing it from anywhere else).
+func (e *Engine) appendTo(t *Tab, path string) {
+	e.unassign(path)
+	t.Items = append(t.Items, path)
+	e.Dirty = true
+}
+
+// tabAt returns the tab whose label is under pt (dropping onto a tab label).
+func (e *Engine) tabAt(p *Plot, pt Point) *Tab {
+	v := e.View(p.ID)
+	if v == nil {
+		return nil
+	}
+	for i, r := range v.Tabs {
+		if r.Contains(pt) && i < len(p.Tabs) {
+			return p.Tabs[i]
+		}
+	}
+	return nil
 }
 
 func (e *Engine) dropInto(p *Plot, path string, pos Point, present map[string]Point) {
 	e.logf("drop %q into %q at %v", path, p.Title, pos)
+	if t := e.tabAt(p, e.center(pos)); t != nil {
+		e.appendTo(t, path) // dropped on a tab label: file it in that tab
+		return
+	}
 	idx := 1 << 30
 	if v := e.View(p.ID); v != nil {
 		idx = e.dropIndex(v, e.center(pos))
 	}
-	e.insertAt(p, path, idx, present)
+	e.insertAt(p.Cur(), path, idx, present)
 }
 
 // userPlaced reports whether a new item appeared where the user recently
@@ -288,16 +396,60 @@ func (e *Engine) handleNew(path string, pos Point, present map[string]Point) {
 		e.dropInto(dest, path, pos, present)
 		return
 	}
+	if p, t := e.ruleFor(path); p != nil {
+		e.appendTo(t, path)
+		e.logf("new item %q -> %q by rule", path, p.Title)
+		return
+	}
 	if inbox := e.Cfg.Plot(e.Cfg.InboxPlot); inbox != nil {
-		e.unassign(path)
-		inbox.Items = append(inbox.Items, path)
+		e.appendTo(inbox.Tabs[0], path)
 		e.logf("new item %q -> inbox %q", path, inbox.Title)
-		e.Dirty = true
 		return
 	}
 	if dest := e.plotAt(e.center(pos)); dest != nil {
 		e.dropInto(dest, path, pos, present)
 	}
+}
+
+// ruleFor returns the destination of the first sorting rule matching path.
+func (e *Engine) ruleFor(path string) (*Plot, *Tab) {
+	for _, r := range e.Cfg.Rules {
+		p := e.Cfg.Plot(r.PlotID)
+		if p == nil || strings.TrimSpace(r.Pattern) == "" {
+			continue
+		}
+		if r.Match(path, e.Env.IsDir(path)) {
+			return p, p.TabByName(r.Tab)
+		}
+	}
+	return nil, nil
+}
+
+// ApplyRules re-sorts the new-items plot (and unsorted desktop icons) with the
+// sorting rules. Returns how many icons moved.
+func (e *Engine) ApplyRules() int {
+	n := 0
+	var candidates []string
+	if inbox := e.Cfg.Plot(e.Cfg.InboxPlot); inbox != nil {
+		candidates = append(candidates, inbox.AllItems()...)
+	}
+	for path := range e.last {
+		if e.owner(path) == nil {
+			candidates = append(candidates, path)
+		}
+	}
+	for _, path := range candidates {
+		p, t := e.ruleFor(path)
+		if p == nil {
+			continue
+		}
+		if _, cur := e.ownerTab(path); cur == t {
+			continue
+		}
+		e.appendTo(t, path)
+		n++
+	}
+	return n
 }
 
 const moveTol = 6
@@ -335,9 +487,10 @@ func (e *Engine) Reconcile(items []Item) []Move {
 			for _, it := range order {
 				if !known[it.Path] && e.owner(it.Path) == nil {
 					// created while Plots was not running
-					if inbox := e.Cfg.Plot(e.Cfg.InboxPlot); inbox != nil {
-						inbox.Items = append(inbox.Items, it.Path)
-						e.Dirty = true
+					if p, t := e.ruleFor(it.Path); p != nil {
+						e.appendTo(t, it.Path)
+					} else if inbox := e.Cfg.Plot(e.Cfg.InboxPlot); inbox != nil {
+						e.appendTo(inbox.Tabs[0], it.Path)
 					}
 				}
 			}
@@ -363,10 +516,10 @@ func (e *Engine) Reconcile(items []Item) []Move {
 				if r == "" || (dist(e.last[r], cur[a]) > 4 && e.Renames[r] != a) {
 					continue
 				}
-				if p := e.owner(r); p != nil {
-					for j, it := range p.Items {
+				if _, t := e.ownerTab(r); t != nil {
+					for j, it := range t.Items {
 						if it == r {
-							p.Items[j] = a
+							t.Items[j] = a
 						}
 					}
 					if pl := e.placed[r]; pl != nil {
@@ -401,6 +554,13 @@ func (e *Engine) Reconcile(items []Item) []Move {
 				if pl == nil {
 					continue
 				}
+				if e.parked[path] {
+					// a hidden icon that Explorer moved back on screen: hide it again
+					if dist(pos, pl.target) > moveTol {
+						delete(e.placed, path)
+					}
+					continue
+				}
 				if pl.pending {
 					if dist(pos, pl.target) <= half {
 						pl.actual, pl.pending = pos, false // settled (Explorer may nudge it)
@@ -427,31 +587,46 @@ func (e *Engine) Reconcile(items []Item) []Move {
 	}
 
 	// forget items whose files are really gone (not just temporarily missing)
+	seen := map[string]bool{}
 	for _, p := range e.Cfg.Plots {
-		out := p.Items[:0]
-		seen := map[string]bool{}
-		for _, it := range p.Items {
-			if seen[it] {
-				continue
+		p.Norm()
+		for _, t := range p.Tabs {
+			out := t.Items[:0]
+			for _, it := range t.Items {
+				if seen[it] {
+					continue
+				}
+				seen[it] = true
+				if _, ok := cur[it]; !ok && e.Env.FileGone(it) {
+					e.Dirty = true
+					continue
+				}
+				out = append(out, it)
 			}
-			seen[it] = true
-			if _, ok := cur[it]; !ok && e.Env.FileGone(it) {
-				e.Dirty = true
-				continue
-			}
-			out = append(out, it)
+			t.Items = out
 		}
-		p.Items = out
 	}
 
 	// layout
 	e.computeViews(cur)
 	var moves []Move
 	assigned := map[string]bool{}
+	e.parked = map[string]bool{}
 	for _, v := range e.views {
+		targets := make([]Point, 0, len(v.Paths)+len(v.Parked))
+		paths := make([]string, 0, len(v.Paths)+len(v.Parked))
 		for i, path := range v.Paths {
+			targets = append(targets, e.cellPos(v, i))
+			paths = append(paths, path)
+		}
+		for _, path := range v.Parked {
+			e.parked[path] = true
+			targets = append(targets, e.ParkAt)
+			paths = append(paths, path)
+		}
+		for i, path := range paths {
 			assigned[path] = true
-			target := e.cellPos(v, i)
+			target := targets[i]
 			pl := e.placed[path]
 			if pl != nil && pl.target == target {
 				continue
@@ -530,7 +705,7 @@ func (e *Engine) AdoptUnder(items []Item) {
 			continue
 		}
 		if p := e.plotAt(e.center(it.Pos)); p != nil {
-			p.Items = append(p.Items, it.Path)
+			p.Cur().Items = append(p.Cur().Items, it.Path)
 			e.Dirty = true
 		}
 	}
@@ -544,11 +719,42 @@ func (e *Engine) Relayout() {
 
 // IconAt reports whether pt lies on any desktop icon from the last tick.
 func (e *Engine) IconAt(pt Point) bool {
-	for _, pos := range e.last {
+	for path, pos := range e.last {
+		if e.parked[path] {
+			continue
+		}
 		r := RectWH(pos.X-e.Cfg.IconOffsetX-e.Nudge(), pos.Y-e.Cfg.IconOffsetY, e.Spacing.X, e.Spacing.Y)
 		if r.Contains(pt) {
 			return true
 		}
 	}
 	return false
+}
+
+// IsParked reports whether an icon is currently hidden off-screen.
+func (e *Engine) IsParked(path string) bool { return e.parked[path] }
+
+// UnparkAll lays every assigned icon out on screen (all tabs, expanded),
+// so nothing stays hidden off-screen after Plots exits.
+func (e *Engine) UnparkAll() []Move {
+	saveGrow, savePeek := e.Cfg.GrowToFit, e.Peek
+	e.Cfg.GrowToFit = true
+	defer func() { e.Cfg.GrowToFit, e.Peek = saveGrow, savePeek }()
+	var moves []Move
+	for _, p := range e.Cfg.Plots {
+		p.Norm()
+		v := e.View(p.ID)
+		if v == nil {
+			continue
+		}
+		i := 0
+		for _, path := range p.AllItems() {
+			if _, ok := e.last[path]; !ok {
+				continue
+			}
+			moves = append(moves, Move{path, e.cellPos(&PlotView{Grid: Point{v.Grid.X, v.Title.B + e.Cfg.Pad(v.Scale)}, Cols: v.Cols}, i)})
+			i++
+		}
+	}
+	return moves
 }

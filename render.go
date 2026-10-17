@@ -99,6 +99,15 @@ type RenderOpts struct {
 	HeaderCol color.NRGBA
 	TitleCol  color.NRGBA
 	Grip      bool // show the "drag to move" indicator
+	Collapsed bool
+	Chevron   bool // draw the roll-up button
+	TabNames  []string
+	ActiveTab int
+	TabRects  []Rect // relative to the plot
+	TabBar    Rect
+	ScrollPos int // first visible row
+	ScrollMax int
+	Rows      int
 	Inbox     bool
 	Edit      bool // edit-mode overlay look
 	Selected  bool
@@ -160,6 +169,10 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		op = math.Max(op, 0.35) * 0.85
 	}
 	th := float32(o.TitleH)
+	hb := float32(0) // header bottom radius
+	if o.Collapsed {
+		hb = r
+	}
 
 	// body
 	fill(img, alpha(o.Color, op), func(z *vector.Rasterizer) { roundRectPath(z, 0, 0, w, h, r, r, false) })
@@ -167,9 +180,9 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 	switch o.Header {
 	case HeaderShade:
 		tc := shade(o.Color, 0.72)
-		fill(img, alpha(tc, math.Min(1, op*0.6+0.25)), func(z *vector.Rasterizer) { roundRectPath(z, 0, 0, w, th, r, 0, false) })
+		fill(img, alpha(tc, math.Min(1, op*0.6+0.25)), func(z *vector.Rasterizer) { roundRectPath(z, 0, 0, w, th, r, hb, false) })
 	case HeaderCustom:
-		fill(img, alpha(o.HeaderCol, math.Min(1, op*0.6+0.25)), func(z *vector.Rasterizer) { roundRectPath(z, 0, 0, w, th, r, 0, false) })
+		fill(img, alpha(o.HeaderCol, math.Min(1, op*0.6+0.25)), func(z *vector.Rasterizer) { roundRectPath(z, 0, 0, w, th, r, hb, false) })
 	}
 	// border ring
 	bw := float32(math.Max(1, math.Round(1*s)))
@@ -190,7 +203,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 	f := faceFor(o.FontFile, float64(o.TitlePt)*96/72*s)
 	if f != nil {
 		title := o.Title
-		maxW := fixed.I(o.W) - fixed.I(int(60*s))
+		maxW := fixed.I(o.W) - fixed.I(int(60*s)) - fixed.I(o.TitleH)
 		d := &font.Drawer{Dst: img, Face: f}
 		if d.MeasureString(title) > maxW {
 			rs := []rune(title)
@@ -254,9 +267,100 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		})
 	}
 
+	// roll-up chevron: ^ collapses, v expands
+	if o.Chevron {
+		cx, cy := w-th/2, th/2
+		u := float32(s)
+		a, sw := 5*u, 1.7*u
+		col := color.NRGBA{255, 255, 255, 200}
+		dir := float32(1) // pointing up
+		if o.Collapsed {
+			dir = -1
+		}
+		fill(img, col, func(z *vector.Rasterizer) {
+			y0 := cy + dir*a/2
+			y1 := cy - dir*a/2
+			z.MoveTo(cx-a, y0)
+			z.LineTo(cx, y1)
+			z.LineTo(cx+a, y0)
+			z.LineTo(cx+a, y0+dir*sw)
+			z.LineTo(cx, y1+dir*sw)
+			z.LineTo(cx-a, y0+dir*sw)
+			z.ClosePath()
+		})
+	}
+
+	// tab strip
+	if len(o.TabNames) > 1 && o.TabBar.H() > 0 && !o.Collapsed {
+		tb := o.TabBar
+		band := shade(o.Color, 0.82)
+		fill(img, alpha(band, math.Min(1, op*0.5+0.18)), func(z *vector.Rasterizer) {
+			z.MoveTo(0, float32(tb.T))
+			z.LineTo(w, float32(tb.T))
+			z.LineTo(w, float32(tb.B))
+			z.LineTo(0, float32(tb.B))
+			z.ClosePath()
+		})
+		tf := faceFor(o.FontFile, float64(max(8, o.TitlePt-1))*96/72*s)
+		for i, tr := range o.TabRects {
+			if i >= len(o.TabNames) {
+				break
+			}
+			active := i == o.ActiveTab
+			if active {
+				fill(img, color.NRGBA{255, 255, 255, 34}, func(z *vector.Rasterizer) {
+					roundRectPath(z, float32(tr.L)+2, float32(tr.T)+3, float32(tr.R)-2, float32(tr.B), float32(5*s), 0, false)
+				})
+				ul := float32(math.Max(2, math.Round(2*s)))
+				fill(img, color.NRGBA{255, 255, 255, 230}, func(z *vector.Rasterizer) {
+					roundRectPath(z, float32(tr.L)+float32(8*s), float32(tr.B)-ul, float32(tr.R)-float32(8*s), float32(tr.B), ul/2, ul/2, false)
+				})
+			}
+			if tf == nil {
+				continue
+			}
+			name := o.TabNames[i]
+			d := &font.Drawer{Dst: img, Face: tf}
+			maxTW := fixed.I(tr.W() - int(12*s))
+			if d.MeasureString(name) > maxTW {
+				rs := []rune(name)
+				for len(rs) > 0 && d.MeasureString(string(rs)+"…") > maxTW {
+					rs = rs[:len(rs)-1]
+				}
+				name = string(rs) + "…"
+			}
+			m := tf.Metrics()
+			tw := d.MeasureString(name)
+			alphaT := uint8(150)
+			if active {
+				alphaT = 250
+			}
+			d.Src = image.NewUniform(color.NRGBA{255, 255, 255, alphaT})
+			d.Dot = fixed.Point26_6{X: fixed.I(tr.L) + (fixed.I(tr.W())-tw)/2, Y: fixed.I(tr.T) + (fixed.I(tr.H())-(m.Ascent+m.Descent))/2 + m.Ascent}
+			d.DrawString(name)
+		}
+	}
+
+	// scroll bar
+	if o.ScrollMax > 0 && !o.Collapsed && o.Rows > 0 {
+		top := float32(o.TitleH + o.TabBar.H() + int(6*s))
+		bot := h - float32(8*s)
+		x1 := w - float32(4*s)
+		x0 := x1 - float32(math.Max(3, 4*s))
+		total := float32(o.Rows + o.ScrollMax)
+		th0 := (bot - top) * float32(o.Rows) / total
+		ty := top + (bot-top-th0)*float32(o.ScrollPos)/float32(o.ScrollMax)
+		rr := (x1 - x0) / 2
+		fill(img, color.NRGBA{255, 255, 255, 40}, func(z *vector.Rasterizer) { roundRectPath(z, x0, top, x1, bot, rr, rr, false) })
+		fill(img, color.NRGBA{255, 255, 255, 190}, func(z *vector.Rasterizer) { roundRectPath(z, x0, ty, x1, ty+th0, rr, rr, false) })
+	}
+
 	// inbox marker: a small "download" arrow in the title's right corner
 	if o.Inbox {
 		cx, cy := w-float32(18*s), th/2
+		if o.Chevron {
+			cx -= th - float32(6*s)
+		}
 		u := float32(s)
 		col := color.NRGBA{255, 255, 255, 200}
 		fill(img, col, func(z *vector.Rasterizer) {

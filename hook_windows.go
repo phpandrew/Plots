@@ -30,23 +30,44 @@ type hookState struct {
 }
 
 type plotZone struct {
-	id    string
-	rect  Rect
-	title Rect
-	edge  int
+	id        string
+	idx       int
+	rect      Rect
+	title     Rect
+	chevron   Rect
+	tabs      []Rect
+	edge      int
+	collapsed bool // rolled up (and not peeking)
+	rolled    bool // rolled up in config (peeking or not)
+	scrolls   bool
 }
 
 // drag state, owned by the hook thread
 var (
-	dragID     string
-	dragZone   int
-	dragActive bool
-	dragStart  Point
-	dragLatest Point
-	dragPosted bool
+	dragID         string
+	dragZone       int
+	dragActive     bool
+	dragStart      Point
+	dragLatest     Point
+	dragPosted     bool
+	swallowUp      bool // eat the button-up that belongs to a click we handled
+	lastTitleClick time.Time
+	lastTitleID    string
+	peekID         string
 )
 
-// zoneAt: 0 = none, 9 = move (title bar), otherwise WMSZ_* edge codes.
+// plotIndex finds a plot zone by id.
+func plotZoneByID(st *hookState, id string) *plotZone {
+	for i := range st.plots {
+		if st.plots[i].id == id {
+			return &st.plots[i]
+		}
+	}
+	return nil
+}
+
+// zoneAt: 0 = none, 9 = move (title bar), 10 = roll-up button,
+// 100+n = tab n, otherwise WMSZ_* edge codes.
 func zoneAt(st *hookState, pt Point) (string, int) {
 	for i := len(st.plots) - 1; i >= 0; i-- {
 		z := st.plots[i]
@@ -54,8 +75,19 @@ func zoneAt(st *hookState, pt Point) (string, int) {
 		if !r.Contains(pt) {
 			continue
 		}
+		if z.chevron.Contains(pt) {
+			return z.id, 10
+		}
+		for i, t := range z.tabs {
+			if t.Contains(pt) {
+				return z.id, 100 + i
+			}
+		}
 		left, right := pt.X < r.L+z.edge, pt.X >= r.R-z.edge
 		bottom := pt.Y >= r.B-z.edge
+		if z.collapsed {
+			bottom = false // a rolled-up plot can only be moved
+		}
 		switch {
 		case bottom && left:
 			return z.id, 7
@@ -169,6 +201,24 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 		}
 		return false
 	}
+	if msg == WM_LBUTTONUP && swallowUp {
+		swallowUp = false
+		return true
+	}
+	if msg == WM_MOUSEMOVE {
+		hoverPeek(st, pt)
+		return false
+	}
+	if msg == 0x020A { // WM_MOUSEWHEEL: scroll the plot under the cursor
+		for i := len(st.plots) - 1; i >= 0; i-- {
+			z := st.plots[i]
+			if z.scrolls && !z.collapsed && z.rect.Contains(pt) && st.desk.IsDesktopWindow(call(pWindowFromPoint, pointArg(pt))) {
+				postMessage(hookMainWnd, msgScroll, uintptr(z.idx), uintptr(wheelDelta))
+				return true
+			}
+		}
+		return false
+	}
 	switch msg {
 	case WM_RBUTTONDOWN, WM_RBUTTONUP, WM_LBUTTONUP, WM_LBUTTONDOWN:
 	default:
@@ -212,6 +262,30 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 					onIcon = true
 				}
 			}
+			if id, z := zoneAt(st, pt); z == 10 || z >= 100 {
+				zp := plotZoneByID(st, id)
+				if z == 10 {
+					postMessage(hookMainWnd, msgToggleRoll, uintptr(zp.idx), 0)
+				} else {
+					postMessage(hookMainWnd, msgSelectTab, uintptr(zp.idx), uintptr(z-100))
+				}
+				swallowUp = true
+				lastDown = time.Time{}
+				return true
+			}
+			if id, z := zoneAt(st, pt); z == 9 {
+				// double-click the title bar rolls the plot up / down
+				now := time.Now()
+				if id == lastTitleID && now.Sub(lastTitleClick) <= time.Duration(call(pGetDoubleClickTime))*time.Millisecond {
+					lastTitleClick = time.Time{}
+					if zp := plotZoneByID(st, id); zp != nil {
+						postMessage(hookMainWnd, msgToggleRoll, uintptr(zp.idx), 0)
+					}
+					swallowUp = true
+					return true
+				}
+				lastTitleClick, lastTitleID = now, id
+			}
 			if id, z := zoneAt(st, pt); z != 0 && (z == 9 || !onIcon) {
 				hookMu.Lock()
 				dragID, dragZone, dragStart, dragLatest, dragPosted = id, z, pt, pt, false
@@ -253,4 +327,26 @@ func addClick(c ClickHint) {
 		hookClicks = hookClicks[len(hookClicks)-50:]
 	}
 	hookMu.Unlock()
+}
+
+var wheelDelta int16
+
+// hoverPeek temporarily unrolls a rolled-up plot while the mouse is over it.
+func hoverPeek(st *hookState, pt Point) {
+	if peekID != "" {
+		z := plotZoneByID(st, peekID)
+		if z == nil || !z.rect.Contains(pt) {
+			peekID = ""
+			postMessage(hookMainWnd, msgPeek, ^uintptr(0), 0)
+		}
+		return
+	}
+	for i := len(st.plots) - 1; i >= 0; i-- {
+		z := st.plots[i]
+		if z.collapsed && z.title.Contains(pt) && !z.chevron.Contains(pt) {
+			peekID = z.id
+			postMessage(hookMainWnd, msgPeek, uintptr(z.idx), 0)
+			return
+		}
+	}
 }

@@ -46,14 +46,7 @@ Each plot remembers the monitor it's on, by device name, and its position on tha
 - Plots turns off Explorer's *Auto arrange icons* and *Align icons to grid*. You can turn this off in Settings, but plots may then look misaligned.
 
 ## Building
-**GitHub Actions** (`.github/workflows/build.yml`) builds `Plots.exe` on every push to `main` and every pull request. Find it under **Actions › the run › Artifacts** as `Plots-dev-<commit>`. That zip has both `Plots.exe` and `Plots-update.exe`; drop `Plots-update.exe` next to a running Plots and it updates itself.
-
-To publish a release, push a version tag:
-```
-git tag v1.0.0
-git push origin v1.0.0
-```
-The workflow attaches `Plots.exe` to a GitHub Release for that tag, with notes generated automatically. The version shows in `%APPDATA%\Plots\plots.log`.
+**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and publishes a GitHub Release named `v0.1.<build number>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. To update a running copy, drop `Plots-update.exe` next to it. Pull requests only build and test.
 
 `.exe` files are git-ignored. Builds come from CI, or from building locally:
 ```

@@ -17,16 +17,20 @@ import (
 var version = "dev"
 
 type Plot struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Color   string   `json:"color"`   // #RRGGBB
-	Opacity int      `json:"opacity"` // 0-100, background opacity
-	Monitor string   `json:"monitor"` // device name, e.g. \\.\DISPLAY1
-	X       int      `json:"x"`       // physical px, relative to monitor top-left
-	Y       int      `json:"y"`
-	W       int      `json:"w"`
-	H       int      `json:"h"`
-	Items   []string `json:"items"` // ordered shell parsing names (full paths)
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Color     string   `json:"color"`   // #RRGGBB
+	Opacity   int      `json:"opacity"` // 0-100, background opacity
+	Monitor   string   `json:"monitor"` // device name, e.g. \\.\DISPLAY1
+	X         int      `json:"x"`       // physical px, relative to monitor top-left
+	Y         int      `json:"y"`
+	W         int      `json:"w"`
+	H         int      `json:"h"`
+	Items     []string `json:"items,omitempty"` // legacy single list; migrated into Tabs
+	Tabs      []*Tab   `json:"tabs"`
+	ActiveTab int      `json:"activeTab"`
+	Collapsed bool     `json:"collapsed"` // rolled up to the title bar
+	Scroll    int      `json:"scroll"`    // first visible row when the plot scrolls
 }
 
 type Config struct {
@@ -51,6 +55,8 @@ type Config struct {
 	Hidden             bool     `json:"hidden"`
 	Padding            int      `json:"padding"` // icon inset inside plots, px at 100% scale
 	SnapToGrid         bool     `json:"snapToGrid"`
+	GrowToFit          bool     `json:"growToFit"` // grow plots instead of scrolling
+	Rules              []*Rule  `json:"rules"`
 	PollMs             int      `json:"pollMs"`     // how often the desktop is checked, 100-500 ms
 	DirectEdit         bool     `json:"directEdit"` // move/resize plots without edit mode
 	PanelMode          string   `json:"panelMode"`  // "", "slwa", "plain", "ulw" (how panels are drawn on the desktop layer)
@@ -141,6 +147,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.TitleSize = 11
 	}
 	for _, p := range cfg.Plots {
+		p.Norm()
 		if p.ID == "" {
 			p.ID = NewID()
 		}

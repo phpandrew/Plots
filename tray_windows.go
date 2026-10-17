@@ -89,6 +89,8 @@ const (
 	cmdColour
 	cmdInbox
 	cmdDelete
+	cmdRoll
+	cmdTabs
 	cmdOpacityBase = 200
 	cmdModeBase    = 400
 )
@@ -128,7 +130,9 @@ func (a *App) plotMenu(id string, at Point) {
 		op.item(cmdOpacityBase+v, fmt.Sprintf("%d%%", v), math.Abs(float64(p.Opacity-v)) < 10, false)
 	}
 	m.sub("Opacity", op)
-	m.item(cmdInbox, "New items && downloads go here", a.cfg.InboxPlot == id, false)
+	m.item(cmdInbox, "New desktop items go here", a.cfg.InboxPlot == id, false)
+	m.item(cmdRoll, "Roll up", p.Collapsed, false)
+	m.item(cmdTabs, "Tabs…", false, false)
 	m.sep()
 	m.item(cmdEdit, "Edit plots", a.editing, false)
 	m.item(cmdNewPlot, "New plot", false, false)
@@ -176,6 +180,16 @@ func (a *App) runCmd(cmd int, plotID string) {
 			a.cfg.InboxPlot = p.ID
 		}
 		a.plotChanged()
+	case cmd == cmdRoll && p != nil:
+		p.Collapsed = !p.Collapsed
+		a.eng.Peek = ""
+		a.plotChanged()
+		a.tick()
+	case cmd == cmdTabs && p != nil:
+		a.showSettings(plotID)
+		if a.settings != nil {
+			call(pSetFocus, a.settings.tabsEdit)
+		}
 	case cmd == cmdDelete && p != nil:
 		a.deletePlot(p.ID, a.main)
 	case cmd >= cmdModeBase && cmd <= cmdModeBase+3:

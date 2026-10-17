@@ -1,14 +1,20 @@
 name: Build
 
+# Every push to main builds Plots.exe and publishes it as a GitHub Release
+# (v0.1.<run number>, marked "Latest"). Pull requests just build and test.
+
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write # needed to publish releases on tags
+  contents: write # needed to create releases
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -21,7 +27,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Test (platform-independent logic)
+      - name: Test
         run: go test ./...
 
       - name: Vet (Windows build)
@@ -35,12 +41,7 @@ jobs:
 
       - name: Version
         id: ver
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=dev-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Build Plots.exe
         env:
@@ -52,20 +53,23 @@ jobs:
             -ldflags "-s -w -H windowsgui -X main.version=${{ steps.ver.outputs.version }}" \
             -o dist/Plots.exe .
           cp dist/Plots.exe dist/Plots-update.exe
-          ls -la dist
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: Plots-${{ steps.ver.outputs.version }}
-          path: |
-            dist/Plots.exe
-            dist/Plots-update.exe
+          name: Plots-v${{ steps.ver.outputs.version }}
+          path: dist/*.exe
           retention-days: 30
 
-      - name: Publish release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Plots.exe
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Plots v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           generate_release_notes: true
+          files: |
+            dist/Plots.exe
+            dist/Plots-update.exe
