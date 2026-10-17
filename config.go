@@ -55,7 +55,8 @@ type Config struct {
 	UniformColor       string   `json:"uniformColor"`
 	UniformOpacity     int      `json:"uniformOpacity"`
 	Hidden             bool     `json:"hidden"`
-	Padding            int      `json:"padding"` // icon inset inside plots, px at 100% scale
+	CornerRadius       int      `json:"cornerRadius"` // px at 100% scale, 0 = square
+	Padding            int      `json:"padding"`      // icon inset inside plots, px at 100% scale
 	SnapToGrid         bool     `json:"snapToGrid"`
 	GrowToFit          bool     `json:"growToFit"` // grow plots instead of scrolling
 	Rules              []*Rule  `json:"rules"`
@@ -73,6 +74,7 @@ func DefaultConfig() *Config {
 		ManageDesktopFlags: true,
 		SnapToGrid:         true,
 		Padding:            10,
+		CornerRadius:       8,
 		TitleColor:         "#FFFFFF",
 		HeaderColor:        "#202020",
 		UniformColor:       "#2B2B2B",

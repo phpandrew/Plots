@@ -55,6 +55,8 @@ type Settings struct {
 	direct      HWND
 	comboIDs    []string
 	lookPage    []HWND
+	radBar      HWND
+	radLabel    HWND
 	folderEdit  HWND
 	folderClear HWND
 	sortCombo   HWND
@@ -147,6 +149,7 @@ const (
 	idFolderBrowse
 	idFolderClear
 	idFolderSort
+	idRadius
 )
 
 var settingsProc uintptr
@@ -319,12 +322,14 @@ func (s *Settings) build(sc func(int) int) {
 	s.headerSw = swatch(242, idHeaderSw, idHeaderChoose)
 	label("Icon padding", 286)
 	s.padBar, s.padLabel = slider(286, 0, 40, idPad)
-	s.uniform = ap(s.ctl(0, "BUTTON", "Use the same colour and opacity for every plot", CHK, sc(colL), sc(326), sc(w), sc(32), idUniform))
+	label("Corner radius", 324)
+	s.radBar, s.radLabel = slider(324, 0, 30, idRadius)
+	s.uniform = ap(s.ctl(0, "BUTTON", "Use the same colour and opacity for every plot", CHK, sc(colL), sc(360), sc(w), sc(32), idUniform))
 	toggleState[s.uniform] = false
-	label("Colour", 370)
-	s.uniSw = swatch(368, idUniSw, idUniChoose)
-	label("Opacity", 412)
-	s.uniBar, s.uniLabel = slider(412, 0, 100, idUniOpacity)
+	label("Colour", 402)
+	s.uniSw = swatch(400, idUniSw, idUniChoose)
+	label("Opacity", 442)
+	s.uniBar, s.uniLabel = slider(442, 0, 100, idUniOpacity)
 
 	// ---- sorting rules page
 	rp := func(h HWND) HWND { s.rulesPage = append(s.rulesPage, h); return h }
@@ -1065,7 +1070,7 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			}
 			return 0
 		}
-		if !s.loading && (lp == s.sizeBar || lp == s.padBar || lp == s.uniBar) {
+		if !s.loading && (lp == s.sizeBar || lp == s.padBar || lp == s.uniBar || lp == s.radBar) {
 			v := int(sendMessage(lp, TBM_GETPOS, 0, 0))
 			switch lp {
 			case s.sizeBar:
@@ -1078,6 +1083,11 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 					return 0
 				}
 				a.cfg.Padding = v
+			case s.radBar:
+				if v == a.cfg.CornerRadius {
+					return 0
+				}
+				a.cfg.CornerRadius = v
 			case s.uniBar:
 				if v == a.cfg.UniformOpacity {
 					return 0
@@ -1206,6 +1216,8 @@ func (s *Settings) refreshLook() {
 	sendMessage(s.headerCombo, 0x14E, uintptr(c.HeaderStyle), 0)
 	sendMessage(s.sizeBar, TBM_SETPOS, 1, uintptr(c.TitleSize))
 	setWindowText(s.sizeLabel, fmt.Sprintf("%d pt", c.TitleSize))
+	sendMessage(s.radBar, TBM_SETPOS, 1, uintptr(c.CornerRadius))
+	setWindowText(s.radLabel, fmt.Sprintf("%d px", c.CornerRadius))
 	sendMessage(s.padBar, TBM_SETPOS, 1, uintptr(c.Padding))
 	setWindowText(s.padLabel, fmt.Sprintf("%d px", c.Padding))
 	sendMessage(s.uniBar, TBM_SETPOS, 1, uintptr(c.UniformOpacity))

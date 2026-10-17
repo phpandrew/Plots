@@ -101,6 +101,7 @@ type RenderOpts struct {
 	HeaderCol color.NRGBA
 	TitleCol  color.NRGBA
 	Grip      bool // show the "drag to move" indicator
+	Radius    int  // corner radius in px at 100% scale; -1 = default (8)
 	Collapsed bool
 	Chevron   bool // draw the roll-up button
 	TabNames  []string
@@ -165,7 +166,13 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, o.W, o.H))
 	s := o.Scale
 	w, h := float32(o.W), float32(o.H)
-	r := float32(8 * s)
+	r := float32(float64(o.Radius) * s)
+	if o.Radius < 0 {
+		r = float32(8 * s)
+	}
+	if maxR := float32(math.Min(float64(o.W), float64(o.H))) / 2; r > maxR {
+		r = maxR
+	}
 	op := float64(o.Opacity) / 100
 	if o.Edit {
 		op = math.Max(op, 0.35) * 0.85
@@ -198,7 +205,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 	}
 	fill(img, bc, func(z *vector.Rasterizer) {
 		roundRectPath(z, 0, 0, w, h, r, r, false)
-		roundRectPath(z, bw, bw, w-bw, h-bw, r-bw, r-bw, true)
+		roundRectPath(z, bw, bw, w-bw, h-bw, max(0, r-bw), max(0, r-bw), true)
 	})
 
 	// title text

@@ -555,6 +555,7 @@ func (a *App) renderOpts(p *Plot, v *PlotView, edit bool) RenderOpts {
 		FontFile: fontFile(c.TitleFont), Header: c.HeaderStyle, Grip: c.DirectEdit && !edit,
 		HeaderCol: ParseHex(c.HeaderColor), TitleCol: ParseHex(c.TitleColor),
 		Inbox: c.InboxPlot == p.ID, Edit: edit, Selected: edit && a.selected == p.ID,
+		Radius:  c.CornerRadius,
 		Chevron: !edit, Collapsed: v.Collapsed, TabNames: p.TabNames(), ActiveTab: p.ActiveTab,
 		TabBar: v.TabBar.Sub(v.Rect), TabRects: relRects(v.Tabs, v.Rect),
 		ScrollPos: v.Scroll, ScrollMax: v.MaxScroll, Rows: v.Rows,
@@ -583,7 +584,7 @@ func (a *App) IsDir(path string) bool {
 
 // lookKey changes whenever anything affecting a plot's appearance changes.
 func (a *App) lookKey(o RenderOpts) string {
-	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d|%v|%v|%d|%v|%d/%d/%d", o.Title, o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
+	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d|%v|%v|%d|%v|%d/%d/%d", o.Title+fmt.Sprint(o.Radius), o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
 		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows)
 }
 
