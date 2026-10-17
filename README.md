@@ -46,12 +46,16 @@ Each plot remembers the monitor it's on, by device name, and its position on tha
 - Plots turns off Explorer's *Auto arrange icons* and *Align icons to grid*. You can turn this off in Settings, but plots may then look misaligned.
 
 ## Building
-**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and publishes a GitHub Release named `v0.2.<build number>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. To update a running copy, drop `Plots-update.exe` next to it. Pull requests only build and test.
+**Version:** the `VERSION` file holds the version (e.g. `0.2.2`). Bump it when you want a new number. If you push without bumping, CI uses the next free patch number (`0.2.3`, …), so builds never collide.
 
-`.exe` files are git-ignored. Builds come from CI, or from building locally:
+**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and publishes a GitHub Release `v<VERSION>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. Drop `Plots-update.exe` next to a running Plots and it updates itself; Plots also checks Releases on its own. Pull requests only build and test.
+
+**Local build** (`build.bat` does this on Windows): it stamps `<VERSION>-dev`, so a later GitHub release of the same number counts as newer:
 ```
-go build -trimpath -ldflags "-s -w -H windowsgui" -o Plots.exe .
+go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=0.2.2-dev" -o Plots.exe .
 ```
+
+`.exe` files are git-ignored.
 On Linux or macOS, add `GOOS=windows GOARCH=amd64`. Requires Go 1.26+.
 
 The icon, manifest and version info live in `rsrc_windows_*.syso`; keep those committed. To regenerate them after changing `winres/`, run `go run github.com/tc-hib/go-winres@latest make --in winres/winres.json`.

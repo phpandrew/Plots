@@ -101,6 +101,7 @@ type Engine struct {
 	// FolderDrop is called when a desktop item is sent to a live-folder plot
 	// (dropped on it, or routed there by a rule / the new-items setting).
 	FolderDrop func(path string, p *Plot)
+	reparkLogs int
 	started    bool
 	Clicks     []ClickHint // recent user clicks on the desktop (drop / new-item hints)
 	Logf       func(format string, args ...any)
@@ -226,7 +227,7 @@ func (e *Engine) computeViews(present map[string]Point) {
 		v.Paths = shown
 		v.Rect = r
 		// equal side margins so labels never hang over the plot edge
-		v.Grid = Point{r.L + max(pad, (r.W()-cols*sx)/2), r.T + th + tabH + pad}
+		v.Grid = Point{r.L + pad, r.T + th + tabH + pad}
 		views = append(views, v)
 	}
 	e.views = views
@@ -586,6 +587,10 @@ func (e *Engine) Reconcile(items []Item) []Move {
 				if e.parked[path] {
 					// a hidden icon that Explorer moved back on screen: hide it again
 					if dist(pos, pl.target) > moveTol {
+						if e.reparkLogs < 20 {
+							e.reparkLogs++
+							e.logf("hidden icon %q came back at %v (parked at %v)", path, pos, pl.target)
+						}
 						delete(e.placed, path)
 					}
 					continue
