@@ -435,6 +435,14 @@ func hoverTrack(st *hookState, pt Point) {
 			break
 		}
 	}
+	if idx < 0 {
+		for _, r := range st.icons {
+			if r.Contains(pt) {
+				idx = -2 // over a desktop icon outside any plot
+				break
+			}
+		}
+	}
 	if idx == hoverIdx {
 		return
 	}

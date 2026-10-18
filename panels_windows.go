@@ -220,6 +220,9 @@ func (a *App) updatePanels() {
 			a.destroyPanel(id)
 		}
 	}
+	if math.Abs(iconFade-a.iconFadeTarget()) > 0.001 {
+		a.startFade()
+	}
 }
 
 // fixPanelOrder makes sure every panel sits between the icons and the
@@ -315,6 +318,9 @@ func (a *App) fadeStep() {
 			busy = true
 		}
 		a.composePanel(pn, pn.rect)
+	}
+	if a.iconFadeStep(dt) {
+		busy = true
 	}
 	if !busy {
 		call(pKillTimer, a.main, timerFade)

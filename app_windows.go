@@ -33,6 +33,7 @@ const (
 	msgHover        = WM_APP + 27
 	msgTabDragMove  = WM_APP + 28
 	msgTabDrop      = WM_APP + 29
+	msgClosePeek    = WM_APP + 35
 	timerFade       = 3
 
 	timerTick = 1
@@ -257,6 +258,7 @@ func (a *App) shutdown() {
 			a.fv.Position(m)
 		}
 	}
+	a.restoreIcons()
 	for id := range a.panels {
 		a.destroyPanel(id)
 	}
@@ -281,6 +283,10 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 	switch msg {
 	case msgThumbsReady:
 		a.updatePanels()
+		a.refreshPeek()
+		return 0
+	case msgClosePeek:
+		a.closePeek()
 		return 0
 	case msgFolderClick:
 		a.onFolderClick(wp, lp)
@@ -379,6 +385,8 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		id := ""
 		if p := a.plotAtIndex(wp); p != nil {
 			id = p.ID
+		} else if int(wp) == -2 {
+			id = "*icon*" // a desktop icon outside the plots: show the icons
 		}
 		if id != a.hoverID {
 			a.hoverID = id

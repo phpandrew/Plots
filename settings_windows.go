@@ -64,7 +64,7 @@ type Settings struct {
 	deskIconCombo, padBar, padLabel, radBar, radLabel             HWND
 	uniform, uniSw, uniBar, uniLabel                              HWND
 	tintCombo, tintSw, tintBar, tintLabel                         HWND
-	fade, fadeBar, fadeLabel                                      HWND
+	fade, fadeBar, fadeLabel, fadeIcons                           HWND
 	fontNames                                                     []string
 
 	// rules page
@@ -152,6 +152,7 @@ const (
 	idSideLogo
 	idFade
 	idLanguage
+	idFadeIcons
 )
 
 var (
@@ -576,11 +577,13 @@ func (s *Settings) buildLookPage() {
 	s.fade = l.toggle(cy, idFade)
 	cy, _ = l.row(T("Faded strength"), T("How visible a plot is while it's faded."), 280)
 	s.fadeBar, s.fadeLabel = l.slider(cy, 10, 90, 0)
+	cy, _ = l.row(T("Fade desktop icons too"), T("Windows draws all desktop icons as one layer, so they fade together and come back when the mouse is over any plot or icon."), 56)
+	s.fadeIcons = l.toggle(cy, idFadeIcons)
 
 	l.section(T("Icons"))
 	cy, _ = l.row(T("Desktop icon size"), T("Applies to every desktop icon, like Ctrl + mouse wheel on the desktop."), 280)
 	s.deskIconCombo = l.combo(cy, 280, idDeskIcon, iconSizeLabels(false)...)
-	cy, _ = l.row(T("Tint live-folder icons"), T("Recolour the icons in live-folder plots so they match."), 280)
+	cy, _ = l.row(T("Tint live-folder icons"), T("Only for live-folder plots, whose icons Plots draws itself. Windows draws desktop icons, so they can't be tinted."), 280)
 	s.tintCombo = l.combo(cy, 280, idTint, T("Off"), T("Match each plot's colour"), T("Custom colour"))
 	cy, _ = l.row(T("Tint colour"), "", 156)
 	s.tintSw = l.swatch(cy, idTintSw, idTintChoose)
@@ -642,7 +645,7 @@ func (s *Settings) buildGeneralPage() {
 	s.dbl = l.toggle(cy, idDbl)
 
 	l.section(T("Peek"))
-	cy, _ = l.row(T("Peek shortcut"), T("Shows your plots by hiding the windows in front. Press again to bring them back."), 56)
+	cy, _ = l.row(T("Peek shortcut"), T("Shows every plot above your windows. Double-click an icon to open it. Press the shortcut again, or Esc, to hide them."), 56)
 	s.peek = l.toggle(cy, idPeek)
 	cy, _ = l.row(T("Keys"), T("Click the box and press the shortcut you want."), 220)
 	s.peekKey = l.add(WS_EX_CLIENTEDGE, "msctls_hotkey32", "", WS_TABSTOP, ctlR-220, cy-14, 220, 28, idPeekKey)
@@ -1310,7 +1313,8 @@ func (s *Settings) refreshLook() {
 	setCheck(s.fade, c.FadeIdle)
 	sendMessage(s.fadeBar, TBM_SETPOS, 1, uintptr(c.FadeLevel))
 	setWindowText(s.fadeLabel, fmt.Sprintf("%d%%", c.FadeLevel))
-	enable(c.FadeIdle, s.fadeBar)
+	enable(c.FadeIdle, s.fadeBar, s.fadeIcons)
+	setCheck(s.fadeIcons, c.FadeIcons)
 	enable(c.TintMode == TintCustom, s.tintSw)
 	// desktop icon size: nearest preset to Explorer's current size
 	cur := s.a.desktopIconSize()
@@ -1728,6 +1732,15 @@ func (s *Settings) command(id int, code uint32) {
 		}
 	case idFade:
 		a.cfg.FadeIdle = checked(s.fade)
+		if !a.cfg.FadeIdle {
+			a.restoreIcons()
+		}
+		s.lookChanged()
+	case idFadeIcons:
+		a.cfg.FadeIcons = checked(s.fadeIcons)
+		if !a.cfg.FadeIcons {
+			a.restoreIcons()
+		}
 		s.lookChanged()
 	case idUniform:
 		a.cfg.UniformLook = checked(s.uniform)

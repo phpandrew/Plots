@@ -79,6 +79,7 @@ type Config struct {
 	TintStrength       int      `json:"tintStrength"` // 0-100
 	FadeIdle           bool     `json:"fadeIdle"`     // plots rest faded and come into focus on hover
 	FadeLevel          int      `json:"fadeLevel"`    // resting strength, 10-90 %
+	FadeIcons          bool     `json:"fadeIcons"`    // fade the desktop icons too (all together)
 	Language           string   `json:"language"`     // UI language code, "" = follow Windows
 }
 
@@ -110,6 +111,7 @@ func DefaultConfig() *Config {
 		TintColor:          "#4FC3F7",
 		TintStrength:       60,
 		FadeLevel:          35,
+		FadeIcons:          true,
 	}
 }
 

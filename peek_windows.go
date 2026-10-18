@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Peek: a global shortcut that shows the desktop (and so your plots) by
-// hiding the windows in front of it. Pressing it again brings them back.
+// Peek: a global shortcut that shows every plot above all windows.
+// Pressing it again (or Esc) hides them.
 
 var (
 	pRegisterHotKey   = user32.NewProc("RegisterHotKey")
@@ -105,9 +105,5 @@ func (a *App) registerPeek() {
 	}
 }
 
-// peek toggles "show desktop", the same as the taskbar's Show desktop button.
-func (a *App) peek() {
-	if tray := call(pFindWindowW, up("Shell_TrayWnd"), 0); tray != 0 {
-		postMessage(tray, WM_COMMAND, 407 /*toggle show desktop*/, 0)
-	}
-}
+// peek shows or hides the plots above all windows (see peekview_windows.go).
+func (a *App) peek() { a.togglePeek() }
