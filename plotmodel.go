@@ -137,14 +137,133 @@ func (r *Rule) Match(path string, isDir bool) bool {
 
 // RulePresets are offered in the settings window.
 var RulePresets = []struct{ Name, Pattern string }{
-	{"Documents", "*.pdf;*.doc;*.docx;*.txt;*.rtf;*.odt;*.md"},
-	{"Spreadsheets", "*.xls;*.xlsx;*.csv;*.ods"},
-	{"Images", "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.svg;*.heic"},
-	{"Design files", "*.psd;*.ai;*.eps;*.indd;*.xd;*.fig"},
-	{"Shortcuts", "*.lnk;*.url"},
-	{"Archives", "*.zip;*.rar;*.7z;*.gz;*.tar"},
-	{"Installers", "*.exe;*.msi;*.msix"},
-	{"Video", "*.mp4;*.mov;*.mkv;*.avi;*.webm"},
-	{"Audio", "*.mp3;*.wav;*.flac;*.m4a"},
-	{"Folders", "folder"},
+	{N("Documents"), "*.pdf;*.doc;*.docx;*.txt;*.rtf;*.odt;*.md"},
+	{N("Spreadsheets"), "*.xls;*.xlsx;*.csv;*.ods"},
+	{N("Images"), "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.svg;*.heic"},
+	{N("Design files"), "*.psd;*.ai;*.eps;*.indd;*.xd;*.fig"},
+	{N("Shortcuts"), "*.lnk;*.url"},
+	{N("Archives"), "*.zip;*.rar;*.7z;*.gz;*.tar"},
+	{N("Installers"), "*.exe;*.msi;*.msix"},
+	{N("Video"), "*.mp4;*.mov;*.mkv;*.avi;*.webm"},
+	{N("Audio"), "*.mp3;*.wav;*.flac;*.m4a"},
+	{N("Folders"), "folder"},
+}
+
+// tabLabel is a tab's visible name.
+func (p *Plot) tabLabel(i int) string {
+	if n := strings.TrimSpace(p.Tabs[i].Name); n != "" {
+		return n
+	}
+	if p.Title != "" {
+		return p.Title
+	}
+	return T("Tab")
+}
+
+func uniqueName(name string, taken map[string]bool) string {
+	n := name
+	for i := 2; taken[strings.ToLower(n)]; i++ {
+		n = name + " " + itoa(i)
+	}
+	taken[strings.ToLower(n)] = true
+	return n
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	var b []byte
+	for ; i > 0; i /= 10 {
+		b = append([]byte{byte('0' + i%10)}, b...)
+	}
+	return string(b)
+}
+
+// CanMerge reports whether src can be dropped onto dst as tabs.
+func (c *Config) CanMerge(srcID, dstID string) bool {
+	src, dst := c.Plot(srcID), c.Plot(dstID)
+	return src != nil && dst != nil && src != dst && src.Folder == "" && dst.Folder == ""
+}
+
+// MergePlots moves every tab of src into dst (as extra tabs) and removes src.
+// Rules and the new-items setting that pointed at src follow its icons.
+func (c *Config) MergePlots(srcID, dstID string) bool {
+	if !c.CanMerge(srcID, dstID) {
+		return false
+	}
+	src, dst := c.Plot(srcID), c.Plot(dstID)
+	src.Norm()
+	dst.Norm()
+	taken := map[string]bool{}
+	for i := range dst.Tabs {
+		dst.Tabs[i].Name = uniqueName(dst.tabLabel(i), taken)
+	}
+	first := len(dst.Tabs)
+	rename := map[string]string{} // src tab name (lowercase, "" = first) -> new name
+	for i, t := range src.Tabs {
+		newName := uniqueName(src.tabLabel(i), taken)
+		rename[strings.ToLower(t.Name)] = newName
+		if i == 0 {
+			rename[""] = newName
+		}
+		dst.Tabs = append(dst.Tabs, &Tab{Name: newName, Items: t.Items})
+	}
+	for _, r := range c.Rules {
+		if r.PlotID == srcID {
+			r.PlotID = dstID
+			if n, ok := rename[strings.ToLower(r.Tab)]; ok {
+				r.Tab = n
+			} else {
+				r.Tab = rename[""]
+			}
+		}
+	}
+	if c.InboxPlot == srcID {
+		c.InboxPlot = dstID
+	}
+	dst.ActiveTab = first
+	c.RemovePlot(srcID)
+	return true
+}
+
+// SplitTab takes tab i out of plot id and returns it as a new plot (not yet
+// placed: the caller sets its position). The source keeps its other tabs.
+func (c *Config) SplitTab(id string, i int) *Plot {
+	p := c.Plot(id)
+	if p == nil || p.Folder != "" {
+		return nil
+	}
+	p.Norm()
+	if len(p.Tabs) < 2 || i < 0 || i >= len(p.Tabs) {
+		return nil
+	}
+	t := p.Tabs[i]
+	np := &Plot{ID: NewID(), Title: p.tabLabel(i), Color: p.Color, Opacity: p.Opacity, Monitor: p.Monitor,
+		W: p.W, H: p.H, Tabs: []*Tab{{Items: t.Items}}}
+	for _, r := range c.Rules {
+		if r.PlotID == id && (strings.EqualFold(r.Tab, t.Name) || (r.Tab == "" && i == 0)) {
+			r.PlotID, r.Tab = np.ID, ""
+		}
+	}
+	p.Tabs = append(p.Tabs[:i], p.Tabs[i+1:]...)
+	if p.ActiveTab >= i && p.ActiveTab > 0 {
+		p.ActiveTab--
+	}
+	p.Norm()
+	c.Plots = append(c.Plots, np)
+	return np
+}
+
+// MoveTab reorders a plot's tabs, keeping the moved tab active.
+func (p *Plot) MoveTab(from, to int) bool {
+	p.Norm()
+	if from == to || from < 0 || to < 0 || from >= len(p.Tabs) || to >= len(p.Tabs) {
+		return false
+	}
+	t := p.Tabs[from]
+	p.Tabs = append(p.Tabs[:from], p.Tabs[from+1:]...)
+	p.Tabs = append(p.Tabs[:to], append([]*Tab{t}, p.Tabs[to:]...)...)
+	p.ActiveTab = to
+	return true
 }

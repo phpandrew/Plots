@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"log"
 	"math"
 	"unsafe"
 
@@ -370,13 +371,13 @@ func (a *App) showToolbar() {
 	h := ch + int(40*s)
 	x := pm.Work.L + (pm.Work.W()-w)/2
 	y := pm.Work.T + int(16*s)
-	a.toolbar = createWindow(WS_EX_TOPMOST|WS_EX_TOOLWINDOW, "PlotsToolbar", "Plots — edit mode",
+	a.toolbar = createWindow(WS_EX_TOPMOST|WS_EX_TOOLWINDOW, "PlotsToolbar", T("Plots — edit mode"),
 		WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_VISIBLE, x, y, w, h, 0, 0)
 	var cr RECT
 	call(pGetClientRect, a.toolbar, uintptr(unsafe.Pointer(&cr)))
 	ox := (int(cr.Right) - cw) / 2
 	font := uiFont(int(math.Round(96 * s)))
-	for i, lbl := range []string{"+ New plot", "Settings…", "Done"} {
+	for i, lbl := range []string{T("+ New plot"), T("Settings…"), T("Done")} {
 		style := uintptr(WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON)
 		if i == 2 {
 			style |= BS_DEFPUSHBUTTON
@@ -427,7 +428,7 @@ func (a *App) newPlot(near Point) {
 		x += int(30 * s)
 		y += int(30 * s)
 	}
-	p := &Plot{ID: NewID(), Title: fmt.Sprintf("Plot %d", len(a.cfg.Plots)+1), Color: a.cfg.NextColor(), Opacity: 60}
+	p := &Plot{ID: NewID(), Title: Tf("Plot %d", len(a.cfg.Plots)+1), Color: a.cfg.NextColor(), Opacity: 60}
 	a.cfg.Plots = append(a.cfg.Plots, p)
 	a.setPlotScreenRect(p, RectWH(x, y, w, h))
 	a.selected = p.ID
@@ -449,7 +450,7 @@ func (a *App) deletePlot(id string, owner HWND) {
 	if p == nil {
 		return
 	}
-	msg := fmt.Sprintf("Delete the plot \"%s\"?\n\nIts icons stay on the desktop where they are; nothing is deleted from disk.", p.Title)
+	msg := Tf("Delete the plot \"%s\"?\n\nIts icons stay on the desktop where they are; nothing is deleted from disk.", p.Title)
 	if messageBox(owner, msg, "Plots", MB_YESNO|MB_ICONWARNING) != IDYES {
 		return
 	}
@@ -665,6 +666,14 @@ func (a *App) dragMove() {
 		}
 	}
 	r = Rect{int(rc.Left), int(rc.Top), int(rc.Right), int(rc.Bottom)}
+	if a.dragZone == 9 {
+		// dropping a plot on another plot's title bar merges them into tabs
+		t := a.mergeTargetAt(cur, o.id)
+		if t != a.dropTarget {
+			a.dropTarget = t
+			a.updatePanels()
+		}
+	}
 	if r == o.rect {
 		return
 	}
@@ -689,6 +698,11 @@ func (a *App) dragEnd() {
 		return
 	}
 	call(pDestroyWindow, o.hwnd)
+	if t := a.dropTarget; t != "" {
+		a.dropTarget = ""
+		a.mergeInto(o.id, t)
+		return
+	}
 	if o.rect != o.startRect {
 		if p := a.cfg.Plot(o.id); p != nil {
 			a.setPlotScreenRect(p, o.rect)
@@ -705,5 +719,181 @@ func registerOverlayClass(a *App) {
 		toolbarProc = windows.NewCallback(func(h HWND, msg uint32, wp, lp uintptr) uintptr { return a.toolbarWndProc(h, msg, wp, lp) })
 		registerClass("PlotsOverlay", overlayProc, 0)
 		registerClass("PlotsToolbar", toolbarProc, appIcon(32))
+	}
+}
+
+// ------------------------------------------------------------------ merge plots into tabs, drag tabs out
+
+// mergeTargetAt is the plot whose title bar or tab strip is under pt and can
+// take src's tabs ("" if none).
+func (a *App) mergeTargetAt(pt Point, src string) string {
+	views := a.eng.Views()
+	for i := len(views) - 1; i >= 0; i-- {
+		v := views[i]
+		if v.ID == src {
+			continue
+		}
+		if v.Title.Contains(pt) || v.TabBar.Contains(pt) {
+			if a.cfg.CanMerge(src, v.ID) {
+				return v.ID
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+func (a *App) mergeInto(src, dst string) {
+	sp, dp := a.cfg.Plot(src), a.cfg.Plot(dst)
+	if sp == nil || dp == nil || !a.cfg.MergePlots(src, dst) {
+		a.tick()
+		return
+	}
+	log.Printf("merged plot %q into %q as tabs", sp.Title, dp.Title)
+	a.selected = dst
+	a.afterTabsChanged()
+}
+
+func (a *App) afterTabsChanged() {
+	a.markDirty()
+	a.eng.Relayout()
+	a.tick()
+	a.save(true)
+	a.publishHookState()
+	if a.settings != nil {
+		a.settings.refreshList()
+		if a.settings.page == "plot" && a.selected != "" {
+			a.settings.selectPlot(a.selected)
+		}
+	}
+}
+
+// onTabDrop handles a tab dragged from plot `id` (tab i) and released at pt:
+// onto another tab of the same plot reorders, onto another plot moves the tab
+// there, onto empty desktop makes it a plot of its own.
+func (a *App) onTabDrop(id string, i int, pt Point) {
+	a.hideTabGhost()
+	p := a.cfg.Plot(id)
+	v := a.eng.View(id)
+	if p == nil || v == nil || i < 0 || i >= len(p.Tabs) {
+		return
+	}
+	// reorder within the strip
+	if v.TabBar.Contains(pt) {
+		for j, r := range v.Tabs {
+			if r.Contains(pt) && p.MoveTab(i, j) {
+				a.afterTabsChanged()
+			}
+		}
+		return
+	}
+	if v.Rect.Contains(pt) {
+		return // dropped back on its own plot
+	}
+	if len(p.Tabs) < 2 {
+		return
+	}
+	target := a.mergeTargetAt(pt, id)
+	if target == "" {
+		target = a.dropPlotAt(pt)
+	}
+	if target != "" {
+		if !a.cfg.CanMerge(id, target) {
+			return
+		}
+		np := a.cfg.SplitTab(id, i)
+		if np == nil {
+			return
+		}
+		a.cfg.MergePlots(np.ID, target)
+		a.selected = target
+		a.afterTabsChanged()
+		return
+	}
+	if a.eng.plotAt(pt) != nil {
+		return // a live-folder plot can't take tabs
+	}
+	np := a.cfg.SplitTab(id, i)
+	if np == nil {
+		return
+	}
+	m := monitorAt(a.mons, pt)
+	w, h := v.Rect.W(), max(v.Rect.H()/2, int(160*m.Scale))
+	r := RectWH(pt.X-w/4, pt.Y-int(14*m.Scale), w, h)
+	// keep it on the monitor's work area
+	if r.R > m.Work.R {
+		r = RectWH(m.Work.R-w, r.T, w, h)
+	}
+	if r.B > m.Work.B {
+		r = RectWH(r.L, m.Work.B-h, w, h)
+	}
+	if r.L < m.Work.L {
+		r = RectWH(m.Work.L, r.T, w, h)
+	}
+	if r.T < m.Work.T {
+		r = RectWH(r.L, m.Work.T, w, h)
+	}
+	a.setPlotScreenRect(np, r)
+	log.Printf("tab %q split off %q into its own plot", np.Title, p.Title)
+	a.selected = np.ID
+	a.afterTabsChanged()
+}
+
+// dropPlotAt is any plot (not a live folder) under pt.
+func (a *App) dropPlotAt(pt Point) string {
+	views := a.eng.Views()
+	for i := len(views) - 1; i >= 0; i-- {
+		if views[i].Rect.Contains(pt) {
+			if p := a.cfg.Plot(views[i].ID); p != nil && p.Folder == "" {
+				return p.ID
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+// showTabGhost shows the dragged tab's name under the cursor.
+func (a *App) showTabGhost(id string, i int, pt Point) {
+	p := a.cfg.Plot(id)
+	v := a.eng.View(id)
+	if p == nil || v == nil || i < 0 || i >= len(p.Tabs) {
+		return
+	}
+	registerOverlayClass(a)
+	s := v.Scale
+	w, h := int(160*s), int(28*s)
+	pos := Point{pt.X - w/2, pt.Y - h/2}
+	if a.tabGhost == 0 || !isWindow(a.tabGhost) {
+		a.tabGhost = createWindow(WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_TOPMOST|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT, "PlotsOverlay", "", WS_POPUP, pos.X, pos.Y, w, h, 0, 0)
+		col := ParseHex(p.Color)
+		if a.cfg.UniformLook {
+			col = ParseHex(a.cfg.UniformColor)
+		}
+		img := RenderPlot(RenderOpts{W: w, H: h, Scale: s, TitleH: h, Title: p.TabNames()[i], Color: col, Opacity: 92,
+			TitlePt: max(9, a.cfg.TitleSize-1), FontFile: fontFile(a.cfg.TitleFont), Header: HeaderSame, TitleCol: ParseHex(a.cfg.TitleColor), Radius: 6, DropTarget: true})
+		call(pSetWindowPos, a.tabGhost, ^uintptr(0), uintptr(pos.X), uintptr(pos.Y), uintptr(w), uintptr(h), SWP_NOACTIVATE|SWP_SHOWWINDOW)
+		pushLayered(a.tabGhost, img, &pos)
+	} else {
+		call(pSetWindowPos, a.tabGhost, ^uintptr(0), uintptr(pos.X), uintptr(pos.Y), 0, 0, SWP_NOACTIVATE|SWP_NOSIZE)
+	}
+	t := a.mergeTargetAt(pt, id)
+	if t == "" && !(v.Rect.Contains(pt)) {
+		t = a.dropPlotAt(pt)
+	}
+	if t != a.dropTarget {
+		a.dropTarget = t
+		a.updatePanels()
+	}
+}
+
+func (a *App) hideTabGhost() {
+	if a.tabGhost != 0 {
+		call(pDestroyWindow, a.tabGhost)
+		a.tabGhost = 0
+	}
+	if a.dropTarget != "" {
+		a.dropTarget = ""
+		a.updatePanels()
 	}
 }

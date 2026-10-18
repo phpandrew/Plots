@@ -295,3 +295,38 @@ func TestFolderPlotReceivesFiles(t *testing.T) {
 		t.Fatalf("new item should be moved into the folder, got %v / %v", moved, cfg.Plots[1].AllItems())
 	}
 }
+
+func TestMergeAndSplitTabs(t *testing.T) {
+	c := DefaultConfig()
+	a := &Plot{ID: "a", Title: "Work", Tabs: []*Tab{{Items: []string{"w1"}}}}
+	b := &Plot{ID: "b", Title: "Games", Tabs: []*Tab{{Name: "PC", Items: []string{"g1"}}, {Name: "Retro", Items: []string{"g2"}}}}
+	f := &Plot{ID: "f", Title: "Docs", Folder: `C:\Docs`}
+	c.Plots = []*Plot{a, b, f}
+	c.InboxPlot = "b"
+	c.Rules = []*Rule{{Pattern: "*.exe", PlotID: "b", Tab: "Retro"}}
+	if c.MergePlots("a", "f") {
+		t.Fatal("merged into a live folder")
+	}
+	if !c.MergePlots("b", "a") {
+		t.Fatal("merge failed")
+	}
+	if c.Plot("b") != nil || len(a.Tabs) != 3 || a.Tabs[0].Name != "Work" || a.Tabs[2].Name != "Retro" || a.ActiveTab != 1 {
+		t.Fatalf("bad merge: %+v", a.TabNames())
+	}
+	if c.InboxPlot != "a" || c.Rules[0].PlotID != "a" || c.Rules[0].Tab != "Retro" {
+		t.Fatalf("inbox/rules not moved: %s %+v", c.InboxPlot, c.Rules[0])
+	}
+	np := c.SplitTab("a", 2)
+	if np == nil || np.Title != "Retro" || np.Tabs[0].Items[0] != "g2" || len(a.Tabs) != 2 {
+		t.Fatalf("bad split: %+v", np)
+	}
+	if c.Rules[0].PlotID != np.ID {
+		t.Fatal("rule didn't follow the split tab")
+	}
+	if !a.MoveTab(1, 0) || a.Tabs[0].Name != "PC" || a.ActiveTab != 0 {
+		t.Fatalf("bad move: %v", a.TabNames())
+	}
+	if c.SplitTab("f", 0) != nil {
+		t.Fatal("split a live folder")
+	}
+}

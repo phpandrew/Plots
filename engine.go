@@ -49,6 +49,7 @@ type PlotView struct {
 	TabBar    Rect   // empty when the plot has a single tab
 	Tabs      []Rect // one per tab
 	Grid      Point  // top-left of first icon cell
+	Cell      Point  // icon cell size (the desktop's spacing, or a live folder's own icon size)
 	Cols      int
 	Rows      int // visible rows
 	Scale     float64
@@ -161,11 +162,15 @@ func (e *Engine) computeViews(present map[string]Point) {
 		if len(p.Tabs) > 1 && p.Folder == "" {
 			tabH = TabBarH(scale)
 		}
-		cols := (r.W() - 2*pad) / sx
+		cell := Point{sx, sy}
+		if p.Folder != "" && p.IconSize > 0 {
+			cell = FolderCellSize(p.IconSize, scale)
+		}
+		cols := (r.W() - 2*pad) / cell.X
 		if cols < 1 {
 			cols = 1
 		}
-		v := &PlotView{ID: p.ID, Scale: scale, Cols: cols}
+		v := &PlotView{ID: p.ID, Scale: scale, Cols: cols, Cell: cell}
 		v.Collapsed = p.Collapsed && e.Peek != p.ID
 		var shown []string
 		for ti, t := range p.Tabs {
@@ -190,14 +195,14 @@ func (e *Engine) computeViews(present map[string]Point) {
 		if v.Collapsed {
 			r.B = r.T + th
 		} else {
-			need := th + tabH + pad + rows*sy + pad
+			need := th + tabH + pad + rows*cell.Y + pad
 			if e.Cfg.GrowToFit {
 				if r.H() < need {
 					r.B = r.T + need
 				}
 				v.Rows = rows
 			} else {
-				capRows := max(1, (r.H()-th-tabH-2*pad)/sy)
+				capRows := max(1, (r.H()-th-tabH-2*pad)/cell.Y)
 				v.Rows = capRows
 				if rows > capRows {
 					v.MaxScroll = rows - capRows
@@ -231,6 +236,12 @@ func (e *Engine) computeViews(present map[string]Point) {
 		views = append(views, v)
 	}
 	e.views = views
+}
+
+// FolderCellSize is the cell used for a live-folder plot with its own icon size
+// (icon px at 100% scale): room for the icon plus a two-line label.
+func FolderCellSize(icon int, scale float64) Point {
+	return Point{int(math.Round(float64(max(icon+28, 76)) * scale)), int(math.Round(float64(icon+46) * scale))}
 }
 
 func (e *Engine) View(id string) *PlotView {

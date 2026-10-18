@@ -58,6 +58,26 @@ var (
 	peekID         string
 )
 
+// tab drag state (written by the hook thread, read by the main thread)
+var (
+	tabDragPlot   string
+	tabDragIdx    int
+	tabDragStart  Point
+	tabDragPt     Point
+	tabDragActive bool
+)
+
+// tabDragInfo returns the tab being dragged and the cursor; done clears it.
+func tabDragInfo(done bool) (id string, idx int, pt Point) {
+	hookMu.Lock()
+	defer hookMu.Unlock()
+	id, idx, pt = tabDragPlot, tabDragIdx, tabDragPt
+	if done {
+		tabDragPlot, tabDragActive = "", false
+	}
+	return
+}
+
 // plotIndex finds a plot zone by id.
 func plotZoneByID(st *hookState, id string) *plotZone {
 	for i := range st.plots {
@@ -203,12 +223,45 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 		}
 		return false
 	}
+	hookMu.Lock()
+	tabDragging := tabDragPlot != ""
+	hookMu.Unlock()
+	if tabDragging {
+		switch msg {
+		case WM_MOUSEMOVE:
+			hookMu.Lock()
+			tabDragPt = pt
+			if !tabDragActive && (abs(pt.X-tabDragStart.X) > 6 || abs(pt.Y-tabDragStart.Y) > 6) {
+				tabDragActive = true
+			}
+			active := tabDragActive
+			hookMu.Unlock()
+			if active {
+				postMessage(hookMainWnd, msgTabDragMove, 0, 0)
+			}
+			return false
+		case WM_LBUTTONUP:
+			hookMu.Lock()
+			tabDragPt = pt
+			active := tabDragActive
+			if !active {
+				tabDragPlot = ""
+			}
+			hookMu.Unlock()
+			if active {
+				postMessage(hookMainWnd, msgTabDrop, 0, 0)
+			}
+			return true
+		}
+		return false
+	}
 	if msg == WM_LBUTTONUP && swallowUp {
 		swallowUp = false
 		return true
 	}
 	if msg == WM_MOUSEMOVE {
 		hoverPeek(st, pt)
+		hoverTrack(st, pt)
 		return false
 	}
 	if msg == 0x020A { // WM_MOUSEWHEEL: scroll the plot under the cursor
@@ -274,10 +327,14 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 				zp := plotZoneByID(st, id)
 				if z == 10 {
 					postMessage(hookMainWnd, msgToggleRoll, uintptr(zp.idx), 0)
+					swallowUp = true
 				} else {
 					postMessage(hookMainWnd, msgSelectTab, uintptr(zp.idx), uintptr(z-100))
+					// the tab may be dragged: to reorder, onto another plot, or out
+					hookMu.Lock()
+					tabDragPlot, tabDragIdx, tabDragStart, tabDragPt, tabDragActive = id, z-100, pt, pt, false
+					hookMu.Unlock()
 				}
-				swallowUp = true
 				lastDown = time.Time{}
 				return true
 			}
@@ -365,6 +422,30 @@ func hoverPeek(st *hookState, pt Point) {
 			return
 		}
 	}
+}
+
+var hoverIdx = -1
+
+// hoverTrack tells the main thread which plot the mouse is over (for fading).
+func hoverTrack(st *hookState, pt Point) {
+	idx := -1
+	for i := len(st.plots) - 1; i >= 0; i-- {
+		if st.plots[i].rect.Contains(pt) {
+			idx = st.plots[i].idx
+			break
+		}
+	}
+	if idx == hoverIdx {
+		return
+	}
+	if idx >= 0 && !st.desk.IsDesktopWindow(call(pWindowFromPoint, pointArg(pt))) {
+		idx = -1 // a window is covering the plot
+		if idx == hoverIdx {
+			return
+		}
+	}
+	hoverIdx = idx
+	postMessage(hookMainWnd, msgHover, uintptr(idx), 0)
 }
 
 // folderBodyAt returns the live-folder plot whose content area holds pt.

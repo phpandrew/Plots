@@ -8,10 +8,26 @@ A lightweight Stardock Fences–style organizer. Single `Plots.exe`, no installe
   <em>A plot on the desktop: icons snap into a translucent panel that blends with your wallpaper.</em>
 </p>
 
-<p align="center">
-  <img src="docs/settings.png" alt="Plots settings window showing the plot list sidebar and the General settings page" width="600"><br>
-  <em>Settings: plots in the sidebar, with Appearance and General settings pages.</em>
-</p>
+## Settings
+
+<table>
+  <tr>
+    <td><img src="docs/settings-plot.png" alt="Settings for one plot: title, colour, opacity, roll-up, tabs, live folder and icon size"></td>
+    <td><img src="docs/settings-appearance.png" alt="Appearance settings: title font and size, header band, colours, corner radius and fading"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Each plot: look, tabs, live folder and icon size</em></td>
+    <td align="center"><em>Appearance for every plot</em></td>
+  </tr>
+  <tr>
+    <td><img src="docs/settings-general.png" alt="General settings: new-items plot, downloads, moving plots, snapping and Peek"></td>
+    <td><img src="docs/settings-backup.png" alt="Backup and restore: export, import and scheduled backups"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>General: new items, snapping, Peek shortcut</em></td>
+    <td align="center"><em>Export, import and scheduled backups</em></td>
+  </tr>
+</table>
 
 ## Features
 - **Plots:** translucent panels on the desktop that hold your icons. Set the title, colour, opacity and rounded corners for each one.
@@ -19,18 +35,31 @@ A lightweight Stardock Fences–style organizer. Single `Plots.exe`, no installe
 - **Real desktop icons:** icons stay normal Explorer icons. New, renamed and deleted files show up straight away, and Plots recovers after Explorer restarts.
 - **Inbox plot:** pick one plot and every new item saved to the desktop lands in it automatically. Plots can also move finished downloads to the desktop.
 - **Sorting rules:** send files to a plot by type (images, documents, installers, archives and more).
-- **Tabs:** split one plot into two or more tabs of equal width.
+- **Tabs:** split one plot into two or more tabs of equal width. Drag a plot onto another's title bar to merge them into tabs, drag a tab to reorder it, or drag it out onto the desktop to make it a plot of its own.
 - **Roll up:** collapse a plot to its title bar with the chevron, or by double-clicking the title. Hovering a rolled-up plot shows its contents.
 - **Scrolling:** plots with more icons than fit scroll with the mouse wheel, or can grow to fit instead.
-- **Live folders:** a plot can show the contents of any folder, with thumbnails, sorting and the normal Explorer right-click menu.
+- **Live folders:** a plot can show the contents of any folder, with thumbnails, sorting, its own icon size, optional icon tinting and the normal Explorer right-click menu.
+- **Fade until hover:** plots can rest faded into the wallpaper and come into focus when the mouse is over them.
+- **Peek:** a shortcut you choose (Ctrl+Alt+P by default) shows your plots by hiding the windows in front. Press it again to bring them back.
+- **Backup and restore:** export your whole layout to a `.plots` file, import it on another PC, and keep daily, weekly or monthly backups in a folder you pick.
 - **Move and resize anytime:** drag a plot by its title bar or edges, with snap to grid and fine control near screen edges. There's also a full edit mode.
 - **Multi-monitor:** every plot remembers its monitor and follows each monitor's DPI scale.
-- **Global look:** one header style, font, font size and colour for every plot, or set each plot on its own.
+- **Global look:** one header style, font, font size and colour for every plot, or set each plot on its own. Desktop icon size can be changed from Settings too.
 - **Double-click to hide** (optional): hide or show all icons and plots by double-clicking empty desktop.
 - **Right-click menus** on plot title bars, and a tray icon for quick access.
 - **Starts fast** with Windows, and the desktop check interval is adjustable from 0.1 to 0.5 s.
 - **Updates itself:** checks GitHub Releases from the About page or automatically, then updates in place.
+- **8 languages:** English, Français, Español, Português (Brasil), Deutsch, 中文（简体）, 日本語 and Русский. Plots follows your Windows language, or pick one under **General › Language**.
 - **Small and portable:** one `Plots.exe`, no installer, no runtime. Every release is security-scanned before it's published.
+
+## Languages
+
+<p align="center">
+  <img src="docs/settings-fr.png" alt="The Plots settings window in French" width="600"><br>
+  <em>Plots in French. It follows your Windows display language automatically.</em>
+</p>
+
+Plots is translated into French, Spanish, Brazilian Portuguese, German, Simplified Chinese, Japanese and Russian. The translations are machine-assisted, so corrections from native speakers are very welcome: each language is one file in [`lang/`](lang/), and [lang/README.md](lang/README.md) explains how to fix a string or add a language.
 
 ## Run it
 1. **Quit Fences first.** Both apps move the same desktop icons and will fight each other.
@@ -108,4 +137,8 @@ Every push to `main` is scanned with **govulncheck** and **CodeQL** before it's 
 | `.github/workflows/security.yml`, `.github/scripts/security-report.sh` | govulncheck and CodeQL; opens and closes `security` issues |
 | `.github/dependabot.yml` | Dependabot update PRs |
 | `about_windows.go`, `update.go` | About page, GitHub links, update check / download from GitHub Releases |
-| `plotmodel.go` | Tabs, sorting rules and their presets |
+| `plotmodel.go` | Tabs, sorting rules and their presets, merging plots and splitting tabs |
+| `backup.go`, `backup_windows.go` | Export / import of `.plots` layouts, scheduled backups |
+| `peek_windows.go` | The Peek shortcut |
+| `i18n.go`, `i18n_windows.go`, `lang/*.json` | Translations: `T("English text")` looks the text up in the current language |
+| `snapshot_windows.go` | Saves PNGs of the settings pages (create `snap.request` next to `config.json`; add `lang=fr` for another language) for docs |

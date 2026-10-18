@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"io"
 	"log"
 	"math"
@@ -311,19 +312,22 @@ func (a *App) iconPx(scale float64) int {
 func (a *App) drawFolder(img *image.RGBA, p *Plot, v *PlotView) {
 	fs := a.folderState(p)
 	entries := a.folderEntries(p)
-	sx, sy := a.eng.Spacing.X, a.eng.Spacing.Y
+	sx, sy := v.Cell.X, v.Cell.Y
 	if v.Collapsed {
 		return
 	}
 	if fs.err != "" || len(entries) == 0 {
-		msg := "This folder is empty."
+		msg := T("This folder is empty.")
 		if fs.err != "" {
-			msg = "Can't open folder: " + p.Folder
+			msg = Tf("Can't open folder: %s", p.Folder)
 		}
 		DrawFolderCells(img, []FolderCell{{Name: msg, X: 0, Y: v.Grid.Y - v.Rect.T, W: v.Rect.W(), H: sy}}, 0, v.Scale)
 		return
 	}
 	px := a.iconPx(v.Scale)
+	if p.IconSize > 0 {
+		px = int(math.Round(float64(p.IconSize) * v.Scale))
+	}
 	first := v.Scroll * v.Cols
 	visible := len(entries) - first
 	if v.Rows > 0 && !a.cfg.GrowToFit {
@@ -334,7 +338,7 @@ func (a *App) drawFolder(img *image.RGBA, p *Plot, v *PlotView) {
 		e := entries[first+i]
 		col, row := i%v.Cols, i/v.Cols
 		cells = append(cells, FolderCell{
-			Icon: a.thumb(e, px), Name: e.Name,
+			Icon: a.tinted(p, e, px), Name: e.Name,
 			X: v.Grid.X - v.Rect.L + col*sx, Y: v.Grid.Y - v.Rect.T + row*sy, W: sx, H: sy,
 			Selected: e.Path == fs.sel,
 		})
@@ -348,7 +352,7 @@ func (a *App) folderHit(p *Plot, pt Point) *folderEntry {
 	if v == nil || v.Collapsed {
 		return nil
 	}
-	sx, sy := a.eng.Spacing.X, a.eng.Spacing.Y
+	sx, sy := max(1, v.Cell.X), max(1, v.Cell.Y)
 	if pt.X < v.Grid.X || pt.Y < v.Grid.Y {
 		return nil
 	}
@@ -487,7 +491,7 @@ func pickFolder(owner HWND, title string) string {
 
 // newFolderPlot asks for a folder and creates a live-folder plot for it.
 func (a *App) newFolderPlot(owner HWND) {
-	dir := pickFolder(owner, "Choose a folder to show in a live plot")
+	dir := pickFolder(owner, T("Choose a folder to show in a live plot"))
 	if dir == "" {
 		return
 	}
@@ -503,4 +507,37 @@ func (a *App) newFolderPlot(owner HWND) {
 	}
 	a.plotChanged()
 	a.tick()
+}
+
+var tintCache = map[string]*image.RGBA{}
+
+// tinted is the entry's icon with the live-folder tint applied (Appearance).
+func (a *App) tinted(p *Plot, e folderEntry, px int) image.Image {
+	img := a.thumb(e, px)
+	if img == nil || a.cfg.TintMode == TintOff || a.cfg.TintStrength <= 0 {
+		if img == nil {
+			return nil
+		}
+		return img
+	}
+	c := a.cfg.TintColor
+	if a.cfg.TintMode == TintPlot {
+		c = p.Color
+		if a.cfg.UniformLook {
+			c = a.cfg.UniformColor
+		}
+		// lift dark plot colours so the tint is visible on the panel
+		col := ParseHex(c)
+		c = ToHex(color.NRGBA{uint8(128 + int(col.R)/2), uint8(128 + int(col.G)/2), uint8(128 + int(col.B)/2), 255})
+	}
+	key := fmt.Sprintf("%s|%p|%s|%d", thumbKey(e, px), img, c, a.cfg.TintStrength)
+	if t, ok := tintCache[key]; ok {
+		return t
+	}
+	if len(tintCache) > 3000 {
+		tintCache = map[string]*image.RGBA{}
+	}
+	t := TintImage(img, ParseHex(c), a.cfg.TintStrength)
+	tintCache[key] = t
+	return t
 }

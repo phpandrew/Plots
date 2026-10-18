@@ -5,13 +5,12 @@ package main
 import (
 	"bytes"
 	_ "embed"
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
 	"log"
-	"math"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -116,29 +115,29 @@ func (a *App) onUpdateResult(installDone bool) {
 	a.markDirty()
 	if installDone {
 		if err != nil {
-			a.setUpdateStatus("Download failed: "+err.Error(), false)
+			a.setUpdateStatus(Tf("Download failed: %s", err.Error()), false)
 			return
 		}
-		a.setUpdateStatus("Installing… Plots will restart in a few seconds.", false)
+		a.setUpdateStatus(T("Installing… Plots will restart in a few seconds."), false)
 		a.checkUpdate() // swap right away instead of waiting for the next check
 		return
 	}
 	if err != nil {
 		log.Println("update check:", err)
 		if manual {
-			a.setUpdateStatus("Couldn't check: "+err.Error(), false)
+			a.setUpdateStatus(Tf("Couldn't check: %s", err.Error()), false)
 		}
 		return
 	}
 	if isNewer(r.Tag, version) && r.AssetURL() != "" {
-		a.setUpdateStatus(fmt.Sprintf("%s is available (you have %s).", r.Tag, displayVersion()), true)
+		a.setUpdateStatus(Tf("%s is available (you have %s).", r.Tag, displayVersion()), true)
 		if !manual {
-			a.notify("Plots update available", fmt.Sprintf("%s is ready. Click to open Plots settings.", r.Tag))
+			a.notify(T("Plots update available"), Tf("%s is ready. Click to open Plots settings.", r.Tag))
 		}
 		return
 	}
 	if manual {
-		a.setUpdateStatus(fmt.Sprintf("You're up to date (%s).", displayVersion()), false)
+		a.setUpdateStatus(Tf("You're up to date (%s).", displayVersion()), false)
 	}
 }
 
@@ -162,47 +161,40 @@ func (a *App) maybeAutoCheck() {
 
 // ------------------------------------------------------------------ about page
 
-func (s *Settings) buildAbout(sc func(int) int) {
-	const BTN = WS_TABSTOP | BS_PUSHBUTTON
-	ab := func(h HWND) HWND { s.aboutPage = append(s.aboutPage, h); return h }
-	w := colR - colL
+func (s *Settings) buildAbout() {
+	l := s.newPage("about")
+	top := l.cardBox(300)
 	center := func(text string, y, h int, font uintptr, muted bool) HWND {
-		c := ab(s.ctl(0, "STATIC", text, 0x1 /*SS_CENTER*/, sc(colL), sc(y), sc(w), sc(h), 0))
+		c := l.add(0, "STATIC", text, 0x1 /*SS_CENTER*/ |0x80, cardL+16, y, cardW-32, h, 0)
 		if font != 0 {
 			sendMessage(c, WM_SETFONT, font, 1)
 		}
-		if muted {
-			s.muted = append(s.muted, c)
-		}
+		s.muted[c] = muted
 		return c
 	}
-	dpi := dpiForWindow(s.hwnd)
-	s.bigFont = call(pCreateFontW, uintptr(int32(-int(math.Round(22*float64(dpi)/72)))), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0, up("Segoe UI"))
-
-	ab(s.ctl(0, "STATIC", "", 0xD /*SS_OWNERDRAW*/, sc(colL+(w-84)/2), sc(20), sc(84), sc(84), idLogo))
-	center("Plots", 108, 40, s.bigFont, false)
-	center("Desktop groups for Windows — a lightweight Fences alternative.", 150, 20, 0, true)
-	s.verLabel = center("Version "+displayVersion(), 176, 20, 0, false)
-	center("Created by Andrew Lyle · @phpandrew", 200, 20, 0, true)
-
+	l.add(0, "STATIC", "", 0xD /*SS_OWNERDRAW*/, cardL+(cardW-84)/2, top+20, 84, 84, idLogo)
+	center("Plots", top+108, 40, s.bigFont, false)
+	center(T("Desktop groups for Windows. A lightweight Fences alternative."), top+150, 20, 0, true)
+	s.verLabel = center(Tf("Version %s", displayVersion()), top+174, 20, 0, false)
+	center(Tf("Created by %s", "Andrew Lyle · @phpandrew"), top+196, 20, 0, true)
 	bw := []int{170, 110, 140}
 	gap := 10
-	x := colL + (w-(bw[0]+bw[1]+bw[2]+2*gap))/2
-	ab(s.ctl(0, "BUTTON", "View on GitHub", WS_TABSTOP|0xB /*BS_OWNERDRAW*/, sc(x), sc(232), sc(bw[0]), sc(34), idGitHub))
-	ab(s.ctl(0, "BUTTON", "Releases", BTN, sc(x+bw[0]+gap), sc(232), sc(bw[1]), sc(34), idReleases))
-	ab(s.ctl(0, "BUTTON", "Report an issue", BTN, sc(x+bw[0]+bw[1]+2*gap), sc(232), sc(bw[2]), sc(34), idIssues))
-	link := ab(s.ctl(0, "STATIC", "github.com/"+repoSlug, 0x1|SS_NOTIFY, sc(colL), sc(276), sc(w), sc(20), idRepoLink))
-	s.linkLabel = link
+	x := cardL + (cardW-(bw[0]+bw[1]+bw[2]+2*gap))/2
+	l.add(0, "BUTTON", T("View on GitHub"), WS_TABSTOP|0xB /*BS_OWNERDRAW*/, x, top+226, bw[0], 34, idGitHub)
+	l.add(0, "BUTTON", T("Releases"), WS_TABSTOP|BS_PUSHBUTTON, x+bw[0]+gap, top+226, bw[1], 34, idReleases)
+	l.add(0, "BUTTON", T("Report an issue"), WS_TABSTOP|BS_PUSHBUTTON, x+bw[0]+bw[1]+2*gap, top+226, bw[2], 34, idIssues)
+	s.linkLabel = center("github.com/"+repoSlug, top+268, 20, 0, false)
+	call(pSetWindowLongPtrW, s.linkLabel, ^uintptr(15), WS_CHILD|0x1|0x80|SS_NOTIFY)
+	call(pSetWindowLongPtrW, s.linkLabel, ^uintptr(11) /*GWLP_ID*/, idRepoLink)
 
-	h := ab(s.ctl(0, "STATIC", "Updates", SS_LEFT, sc(colL), sc(318), sc(w), sc(26), 0))
-	sendMessage(h, WM_SETFONT, s.bold, 1)
-	s.muted = append(s.muted, ab(s.ctl(0, "STATIC", "New versions are published on GitHub Releases.", SS_LEFT, sc(colL), sc(346), sc(w), sc(20), 0)))
-	ab(s.ctl(0, "BUTTON", "Check for updates", BTN, sc(colL), sc(376), sc(150), sc(32), idCheckUpd))
-	s.installBtn = ab(s.ctl(0, "BUTTON", "Download && install", BTN|BS_DEFPUSHBUTTON, sc(colL+160), sc(376), sc(160), sc(32), idInstall))
-	s.updLabel = ab(s.ctl(0, "STATIC", "", SS_LEFT, sc(colL), sc(414), sc(w), sc(20), 0))
-	s.muted = append(s.muted, s.updLabel)
-	s.autoUpd = ab(s.ctl(0, "BUTTON", "Check for updates automatically", WS_TABSTOP|0xB, sc(colL), sc(440), sc(w), sc(32), idAutoUpd))
-	toggleState[s.autoUpd] = false
+	l.section(T("Updates"))
+	cy, d := l.row(T("Check for updates"), strings.Repeat(" ", 70), 318)
+	s.updLabel = d
+	s.installBtn = l.button(T("Download && install"), cy, ctlR-160-8-150, 160, idInstall)
+	l.button(T("Check now"), cy, ctlR-150, 150, idCheckUpd)
+	cy, _ = l.row(T("Check for updates automatically"), T("Plots looks for a new release at start-up and every 6 hours."), 56)
+	s.autoUpd = l.toggle(cy, idAutoUpd)
+	l.done()
 }
 
 func (s *Settings) refreshAbout() {
@@ -211,7 +203,11 @@ func (s *Settings) refreshAbout() {
 	}
 	a := s.a
 	setCheck(s.autoUpd, a.cfg.AutoUpdateCheck)
-	setWindowText(s.updLabel, a.updStatus)
+	st := a.updStatus
+	if st == "" {
+		st = Tf("You have %s.", displayVersion())
+	}
+	setWindowText(s.updLabel, st)
 	show := uintptr(SW_HIDE)
 	if a.updAvailable && s.page == "about" {
 		show = SW_SHOWNA
@@ -231,10 +227,10 @@ func (s *Settings) aboutCommand(id int) bool {
 	case idIssues:
 		openURL(issuesURL)
 	case idCheckUpd:
-		a.setUpdateStatus("Checking GitHub…", false)
+		a.setUpdateStatus(T("Checking GitHub…"), false)
 		a.checkForUpdates(true)
 	case idInstall:
-		a.setUpdateStatus("Downloading…", false)
+		a.setUpdateStatus(T("Downloading…"), false)
 		a.installUpdate()
 	case idAutoUpd:
 		a.cfg.AutoUpdateCheck = checked(s.autoUpd)
@@ -308,7 +304,7 @@ func (s *Settings) drawAbout(di *DRAWITEMSTRUCT) bool {
 		old := call(pSelectObject, di.HDC, s.font)
 		call(pSetTextColor, di.HDC, 0x1A1A1A)
 		tr := RECT{r.Left + int32(ix+ic) + int32(8*s.scale), r.Top, r.Right, r.Bottom}
-		call(pDrawTextW, di.HDC, up("View on GitHub"), ^uintptr(0), uintptr(unsafe.Pointer(&tr)), 0x4|0x20)
+		call(pDrawTextW, di.HDC, up(T("View on GitHub")), ^uintptr(0), uintptr(unsafe.Pointer(&tr)), 0x4|0x20)
 		call(pSelectObject, di.HDC, old)
 		return true
 	}

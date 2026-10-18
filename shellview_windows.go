@@ -285,3 +285,13 @@ func (f *FolderView) IconSize() int {
 	}
 	return int(size)
 }
+
+// SetIconSize changes the desktop icon size (logical px, like Ctrl+mouse wheel
+// on the desktop). It applies to every desktop icon.
+func (f *FolderView) SetIconSize(size int) bool {
+	if f.fv2 == 0 || size < 16 || size > 256 {
+		return false
+	}
+	hr := f.fv2.vcall(35, 1 /*FVM_ICON*/, uintptr(size))
+	return int32(hr) >= 0
+}

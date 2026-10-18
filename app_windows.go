@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"math"
 	"os"
@@ -29,6 +30,10 @@ const (
 	msgSelectTab    = WM_APP + 24
 	msgScroll       = WM_APP + 25
 	msgPeek         = WM_APP + 26
+	msgHover        = WM_APP + 27
+	msgTabDragMove  = WM_APP + 28
+	msgTabDrop      = WM_APP + 29
+	timerFade       = 3
 
 	timerTick = 1
 )
@@ -39,6 +44,8 @@ type panel struct {
 	rect Rect
 	hbm  uintptr // composed bitmap for WM_PAINT modes
 	w, h int
+	plot *image.RGBA // last render, before fading and wallpaper blending
+	fade float64     // current strength 0..1 (1 = fully shown)
 }
 
 type App struct {
@@ -71,6 +78,12 @@ type App struct {
 	drag           *overlay
 	dragZone       int
 	lastCount      int
+	backupMsg      string
+	peekErr        string
+	hoverID        string
+	dropTarget     string // plot highlighted as a merge target while dragging
+	tabGhost       HWND
+	reopenPage     string
 }
 
 var app *App
@@ -115,6 +128,7 @@ func main() {
 	}
 	a := &App{cfgPath: cfgPath, cfg: cfg, panels: map[string]*panel{}, overlays: map[string]*overlay{}}
 	app = a
+	a.applyLanguage()
 	a.eng = NewEngine(cfg, a)
 	a.eng.Logf = log.Printf
 	a.eng.FolderDrop = a.moveIntoFolder
@@ -196,6 +210,7 @@ func (a *App) run() {
 	a.taskbarCreated = uint32(call(pRegisterWindowMessageW, up("TaskbarCreated")))
 
 	a.addTray()
+	a.registerPeek()
 	a.attach()
 	go a.applyAutostart()
 	a.publishHookState()
@@ -213,6 +228,10 @@ func (a *App) run() {
 		r := call(pGetMessageW, uintptr(unsafe.Pointer(&m)), 0, 0, 0)
 		if r == 0 || int32(r) == -1 {
 			break
+		}
+		if m.Message == 0x020A /*WM_MOUSEWHEEL*/ && a.settings != nil && a.settings.wantsWheel(m.Hwnd) {
+			a.settings.wheel(m.WParam)
+			continue
 		}
 		if a.settings != nil && a.settings.hwnd != 0 && call(pIsDialogMessageW, a.settings.hwnd, uintptr(unsafe.Pointer(&m))) != 0 {
 			continue
@@ -269,7 +288,16 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 	case msgFolderMenu:
 		a.onFolderMenu(wp, lp)
 		return 0
+	case WM_HOTKEY:
+		if wp == hotkeyPeek {
+			a.peek()
+		}
+		return 0
 	case WM_TIMER:
+		if wp == timerFade {
+			a.fadeStep()
+			return 0
+		}
 		if wp == timerTick {
 			a.tick()
 		}
@@ -336,6 +364,29 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 			a.tick()
 		}
 		return 0
+	case msgTabDragMove:
+		if id, i, pt := tabDragInfo(false); id != "" {
+			a.showTabGhost(id, i, pt)
+		}
+		return 0
+	case msgTabDrop:
+		id, i, pt := tabDragInfo(true)
+		if id != "" {
+			a.onTabDrop(id, i, pt)
+		}
+		return 0
+	case msgHover:
+		id := ""
+		if p := a.plotAtIndex(wp); p != nil {
+			id = p.ID
+		}
+		if id != a.hoverID {
+			a.hoverID = id
+			if a.cfg.FadeIdle {
+				a.startFade()
+			}
+		}
+		return 0
 	case msgPeek:
 		if p := a.plotAtIndex(wp); p != nil {
 			a.eng.Peek = p.ID
@@ -352,6 +403,9 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case WM_APP + 11:
 		call(pSetTimer, a.main, timerTick, uintptr(a.cfg.PollMs), 0)
+		return 0
+	case msgReopenSettings:
+		a.reopenSettings()
 		return 0
 	case msgShowSettings:
 		a.showSettings("")
@@ -389,7 +443,7 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 func (a *App) attach() {
 	a.desk = FindDesktop()
 	if a.desk == nil {
-		a.status = "Could not find the desktop window."
+		a.status = T("Could not find the desktop window.")
 		return
 	}
 	if a.cfg.Hidden {
@@ -450,6 +504,10 @@ func (a *App) tick() {
 		}
 	}
 	a.ticks++
+	if a.ticks > 20 {
+		a.scheduledBackup()
+		a.checkSnapshotRequest()
+	}
 	if !a.desk.Valid() {
 		a.detach()
 		a.attach()
@@ -472,7 +530,7 @@ func (a *App) tick() {
 	}
 	items, origin, err := a.readItems()
 	if err != nil {
-		a.status = "Desktop not ready: " + err.Error()
+		a.status = Tf("Desktop not ready: %s", err.Error())
 		return
 	}
 	a.status = ""
@@ -480,10 +538,7 @@ func (a *App) tick() {
 		if a.cfg.ManageDesktopFlags {
 			a.fv.EnsureFreeLayout()
 		}
-		if sp := a.fv.Spacing(); sp != a.eng.Spacing {
-			a.eng.Spacing = sp
-			a.eng.Relayout()
-		}
+		a.syncIconMetrics()
 	}
 	a.eng.Clicks = append(a.eng.Clicks, drainClicks()...)
 	for o, n := range drainRenames() {
@@ -559,6 +614,7 @@ func (a *App) renderOpts(p *Plot, v *PlotView, edit bool) RenderOpts {
 		Chevron: !edit, Collapsed: v.Collapsed, TabNames: p.TabNames(), ActiveTab: p.ActiveTab,
 		TabBar: v.TabBar.Sub(v.Rect), TabRects: relRects(v.Tabs, v.Rect),
 		ScrollPos: v.Scroll, ScrollMax: v.MaxScroll, Rows: v.Rows,
+		DropTarget: a.dropTarget == p.ID,
 	}
 }
 
@@ -585,7 +641,7 @@ func (a *App) IsDir(path string) bool {
 // lookKey changes whenever anything affecting a plot's appearance changes.
 func (a *App) lookKey(o RenderOpts) string {
 	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d|%v|%v|%d|%v|%d/%d/%d", o.Title+fmt.Sprint(o.Radius), o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
-		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows)
+		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows) + fmt.Sprint(o.DropTarget)
 }
 
 func (a *App) setHidden(h bool) {
@@ -718,4 +774,34 @@ func (a *App) parkPoint() Point {
 		v = Rect{min(v.L, m.Rect.L), min(v.T, m.Rect.T), max(v.R, m.Rect.R), max(v.B, m.Rect.B)}
 	}
 	return Point{v.L + 20, v.B + 400}
+}
+
+// syncIconMetrics picks up the desktop's icon size and spacing (they change
+// with Ctrl+mouse wheel on the desktop, or the icon size setting).
+func (a *App) syncIconMetrics() {
+	if a.fv == nil {
+		return
+	}
+	sp := a.fv.Spacing()
+	iw := int(math.Round(float64(a.fv.IconSize()) * primaryMonitor(a.mons).Scale))
+	if sp != a.eng.Spacing || iw != a.eng.IconW {
+		a.eng.Spacing, a.eng.IconW = sp, iw
+		a.eng.Relayout()
+	}
+}
+
+// desktopIconSize is the desktop icon size in logical px (0 if the desktop isn't ready).
+func (a *App) desktopIconSize() int {
+	if a.fv == nil {
+		return 0
+	}
+	return a.fv.IconSize()
+}
+
+func (a *App) setDesktopIconSize(size int) {
+	if a.fv == nil || !a.fv.SetIconSize(size) {
+		return
+	}
+	a.syncIconMetrics()
+	a.tick()
 }

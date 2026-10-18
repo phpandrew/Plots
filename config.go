@@ -33,6 +33,7 @@ type Plot struct {
 	Scroll     int      `json:"scroll"`               // first visible row when the plot scrolls
 	Folder     string   `json:"folder,omitempty"`     // live folder: show this folder's contents
 	FolderSort string   `json:"folderSort,omitempty"` // "name" (default), "date", "type", "size"
+	IconSize   int      `json:"iconSize,omitempty"`   // live folder icon size in px at 100% (0 = same as the desktop)
 }
 
 type Config struct {
@@ -62,11 +63,30 @@ type Config struct {
 	Rules              []*Rule  `json:"rules"`
 	AutoUpdateCheck    bool     `json:"autoUpdateCheck"`
 	LastUpdateCheck    int64    `json:"lastUpdateCheck"`
-	PollMs             int      `json:"pollMs"`     // how often the desktop is checked, 100-500 ms
-	DirectEdit         bool     `json:"directEdit"` // move/resize plots without edit mode
-	PanelMode          string   `json:"panelMode"`  // "", "slwa", "plain", "ulw" (how panels are drawn on the desktop layer)
-	Known              []string `json:"known"`      // every desktop item seen, to detect new ones across restarts
+	PollMs             int      `json:"pollMs"`      // how often the desktop is checked, 100-500 ms
+	DirectEdit         bool     `json:"directEdit"`  // move/resize plots without edit mode
+	PanelMode          string   `json:"panelMode"`   // "", "slwa", "plain", "ulw" (how panels are drawn on the desktop layer)
+	Known              []string `json:"known"`       // every desktop item seen, to detect new ones across restarts
+	BackupEvery        string   `json:"backupEvery"` // "", "daily", "weekly", "monthly"
+	BackupDir          string   `json:"backupDir"`
+	BackupKeep         int      `json:"backupKeep"` // how many scheduled backups to keep
+	LastBackup         int64    `json:"lastBackup"` // unix seconds
+	PeekEnabled        bool     `json:"peekEnabled"`
+	PeekKey            int      `json:"peekKey"`  // virtual-key code
+	PeekMods           int      `json:"peekMods"` // MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4, MOD_WIN 8
+	TintMode           int      `json:"tintMode"` // live-folder icon tint: TintOff, TintPlot, TintCustom
+	TintColor          string   `json:"tintColor"`
+	TintStrength       int      `json:"tintStrength"` // 0-100
+	FadeIdle           bool     `json:"fadeIdle"`     // plots rest faded and come into focus on hover
+	FadeLevel          int      `json:"fadeLevel"`    // resting strength, 10-90 %
+	Language           string   `json:"language"`     // UI language code, "" = follow Windows
 }
+
+const (
+	TintOff = iota
+	TintPlot
+	TintCustom
+)
 
 func DefaultConfig() *Config {
 	return &Config{
@@ -83,6 +103,13 @@ func DefaultConfig() *Config {
 		PollMs:             300,
 		AutoUpdateCheck:    true,
 		TitleSize:          11,
+		BackupKeep:         10,
+		PeekEnabled:        true,
+		PeekKey:            0x20,  // Space
+		PeekMods:           2 | 1, // Ctrl+Alt
+		TintColor:          "#4FC3F7",
+		TintStrength:       60,
+		FadeLevel:          35,
 	}
 }
 
@@ -149,6 +176,18 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.PollMs < 100 || cfg.PollMs > 500 {
 		cfg.PollMs = 300
+	}
+	if cfg.PeekKey == 0 {
+		cfg.PeekKey, cfg.PeekMods = 'P', 3
+	}
+	if cfg.FadeLevel < 10 || cfg.FadeLevel > 90 {
+		cfg.FadeLevel = 35
+	}
+	if cfg.TintColor == "" {
+		cfg.TintColor = "#4FC3F7"
+	}
+	if cfg.BackupKeep <= 0 {
+		cfg.BackupKeep = 10
 	}
 	if cfg.TitleSize <= 0 {
 		cfg.TitleSize = 11

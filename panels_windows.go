@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"math"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -161,7 +163,7 @@ func (a *App) updatePanels() {
 		if pn == nil || !isWindow(pn.hwnd) {
 			h := a.createPanel(p.Title)
 			if h == 0 {
-				a.status = "Could not create plot panel on the desktop."
+				a.status = T("Could not create plot panel on the desktop.")
 				continue
 			}
 			pn = &panel{hwnd: h}
@@ -182,20 +184,21 @@ func (a *App) updatePanels() {
 			if p.Folder != "" {
 				a.drawFolder(plot, p, v)
 			}
+			pn.plot = plot
+			if pn.fade == 0 {
+				pn.fade = a.fadeTarget(p.ID)
+			}
 			if mode == "ulw" {
 				if !pushLayered(pn.hwnd, plot, nil) {
 					log.Printf("UpdateLayeredWindow failed for panel %q: %v", p.Title, windows.GetLastError())
 				}
 			} else {
-				bg, origin := wallpaperUnder(a.mons, v.Rect)
-				img := ComposePanel(bg, origin, v.Rect, plot)
-				if pn.hbm != 0 {
-					call(pDeleteObject, pn.hbm)
-				}
-				pn.hbm, pn.w, pn.h = makeBitmap(img), img.Bounds().Dx(), img.Bounds().Dy()
-				call(pInvalidateRect, pn.hwnd, 0, 0)
+				a.composePanel(pn, v.Rect)
 			}
 			pn.key = key
+		}
+		if mode != "ulw" && math.Abs(pn.fade-a.fadeTarget(p.ID)) > 0.001 {
+			a.startFade()
 		}
 		// in edit mode the overlays stand in for the panels
 		want := !a.editing && !a.cfg.Hidden
@@ -250,5 +253,70 @@ func (a *App) fixPanelOrder() {
 	for _, p := range a.panels {
 		call(pSetWindowPos, p.hwnd, a.desk.InsertAfter, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)
 		call(pInvalidateRect, p.hwnd, 0, 0)
+	}
+}
+
+// ------------------------------------------------------------------ fade until hovered
+
+// fadeTarget is how strongly a plot should show right now (1 = fully).
+func (a *App) fadeTarget(id string) float64 {
+	if !a.cfg.FadeIdle || a.editing || a.hoverID == id || a.eng.Peek == id || (a.drag != nil && a.drag.id == id) {
+		return 1
+	}
+	return float64(a.cfg.FadeLevel) / 100
+}
+
+// composePanel blends the panel's last render, faded, over the wallpaper.
+func (a *App) composePanel(pn *panel, r Rect) {
+	if pn.plot == nil {
+		return
+	}
+	plot := pn.plot
+	if pn.fade < 0.999 {
+		plot = FadeImage(pn.plot, pn.fade)
+	}
+	bg, origin := wallpaperUnder(a.mons, r)
+	img := ComposePanel(bg, origin, r, plot)
+	if pn.hbm != 0 {
+		call(pDeleteObject, pn.hbm)
+	}
+	pn.hbm, pn.w, pn.h = makeBitmap(img), img.Bounds().Dx(), img.Bounds().Dy()
+	call(pInvalidateRect, pn.hwnd, 0, 0)
+}
+
+var fadeLast time.Time
+
+func (a *App) startFade() {
+	fadeLast = time.Now()
+	call(pSetTimer, a.main, timerFade, 16, 0)
+}
+
+// fadeStep moves every panel's strength toward its target (about 180 ms in, 400 ms out).
+func (a *App) fadeStep() {
+	dt := time.Since(fadeLast).Seconds()
+	fadeLast = time.Now()
+	busy := false
+	for id, pn := range a.panels {
+		t := a.fadeTarget(id)
+		if math.Abs(pn.fade-t) < 0.001 {
+			continue
+		}
+		speed := 1 / 0.18
+		if t < pn.fade {
+			speed = 1 / 0.4
+		}
+		step := dt * speed
+		if pn.fade < t {
+			pn.fade = math.Min(t, pn.fade+step)
+		} else {
+			pn.fade = math.Max(t, pn.fade-step)
+		}
+		if math.Abs(pn.fade-t) >= 0.001 {
+			busy = true
+		}
+		a.composePanel(pn, pn.rect)
+	}
+	if !busy {
+		call(pKillTimer, a.main, timerFade)
 	}
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	xdraw "golang.org/x/image/draw"
 	"image"
 	"image/color"
 	"image/draw"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	xdraw "golang.org/x/image/draw"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
@@ -74,11 +75,89 @@ func faceFor(path string, px float64) font.Face {
 	if err != nil {
 		return nil
 	}
-	faceCache[key] = ff
+	faceCache[key] = &fallbackFace{Face: ff, px: px}
 	return ff
 }
 
 func face(px float64) font.Face { return faceFor("", px) }
+
+// fallbackFaceFiles are Windows fonts tried, in order, for characters the
+// chosen font doesn't have (Chinese, Japanese, Korean, symbols), so titles,
+// file names and translated text never show as empty boxes.
+var fallbackFaceFiles = []string{"msyh.ttc", "YuGothM.ttc", "meiryo.ttc", "malgun.ttf", "seguisym.ttf"}
+
+var (
+	fallbackOnce  sync.Once
+	fallbackFonts []*opentype.Font
+)
+
+func loadFallbackFonts() {
+	win := os.Getenv("WINDIR")
+	if win == "" {
+		win = `C:\Windows`
+	}
+	for _, name := range fallbackFaceFiles {
+		b, err := os.ReadFile(filepath.Join(win, "Fonts", name))
+		if err != nil {
+			continue
+		}
+		if f, err := opentype.Parse(b); err == nil {
+			fallbackFonts = append(fallbackFonts, f)
+		} else if c, err := opentype.ParseCollection(b); err == nil && c.NumFonts() > 0 {
+			if f, err := c.Font(0); err == nil {
+				fallbackFonts = append(fallbackFonts, f)
+			}
+		}
+	}
+}
+
+// fallbackFace draws with Face and borrows missing glyphs from fallback fonts.
+type fallbackFace struct {
+	font.Face
+	px    float64
+	extra []font.Face // created on first miss
+	tried bool
+}
+
+func (f *fallbackFace) pick(r rune) font.Face {
+	if _, ok := f.Face.GlyphAdvance(r); ok || r < 0x80 {
+		return f.Face
+	}
+	if !f.tried {
+		f.tried = true
+		fallbackOnce.Do(loadFallbackFonts)
+		for _, ff := range fallbackFonts {
+			if fc, err := opentype.NewFace(ff, &opentype.FaceOptions{Size: f.px, DPI: 72, Hinting: font.HintingFull}); err == nil {
+				f.extra = append(f.extra, fc)
+			}
+		}
+	}
+	for _, e := range f.extra {
+		if _, ok := e.GlyphAdvance(r); ok {
+			return e
+		}
+	}
+	return f.Face
+}
+
+func (f *fallbackFace) Glyph(dot fixed.Point26_6, r rune) (image.Rectangle, image.Image, image.Point, fixed.Int26_6, bool) {
+	return f.pick(r).Glyph(dot, r)
+}
+
+func (f *fallbackFace) GlyphBounds(r rune) (fixed.Rectangle26_6, fixed.Int26_6, bool) {
+	return f.pick(r).GlyphBounds(r)
+}
+
+func (f *fallbackFace) GlyphAdvance(r rune) (fixed.Int26_6, bool) {
+	return f.pick(r).GlyphAdvance(r)
+}
+
+func (f *fallbackFace) Kern(r0, r1 rune) fixed.Int26_6 {
+	if f.pick(r0) != f.Face || f.pick(r1) != f.Face {
+		return 0
+	}
+	return f.Face.Kern(r0, r1)
+}
 
 // Header styles
 const (
@@ -89,32 +168,33 @@ const (
 )
 
 type RenderOpts struct {
-	W, H      int
-	Scale     float64
-	TitleH    int
-	Title     string
-	Color     color.NRGBA
-	Opacity   int // 0-100
-	TitlePt   int
-	FontFile  string
-	Header    int
-	HeaderCol color.NRGBA
-	TitleCol  color.NRGBA
-	Grip      bool // show the "drag to move" indicator
-	Radius    int  // corner radius in px at 100% scale; -1 = default (8)
-	Collapsed bool
-	Chevron   bool // draw the roll-up button
-	TabNames  []string
-	ActiveTab int
-	TabRects  []Rect // relative to the plot
-	TabBar    Rect
-	ScrollPos int // first visible row
-	ScrollMax int
-	Rows      int
-	Inbox     bool
-	Edit      bool // edit-mode overlay look
-	Selected  bool
-	EmptyHint bool
+	W, H       int
+	Scale      float64
+	TitleH     int
+	Title      string
+	Color      color.NRGBA
+	Opacity    int // 0-100
+	TitlePt    int
+	FontFile   string
+	Header     int
+	HeaderCol  color.NRGBA
+	TitleCol   color.NRGBA
+	Grip       bool // show the "drag to move" indicator
+	Radius     int  // corner radius in px at 100% scale; -1 = default (8)
+	Collapsed  bool
+	Chevron    bool // draw the roll-up button
+	TabNames   []string
+	ActiveTab  int
+	TabRects   []Rect // relative to the plot
+	TabBar     Rect
+	ScrollPos  int // first visible row
+	ScrollMax  int
+	Rows       int
+	Inbox      bool
+	Edit       bool // edit-mode overlay look
+	Selected   bool
+	EmptyHint  bool
+	DropTarget bool // another plot or tab is being dropped here
 }
 
 const kappa = 0.5522848
@@ -202,6 +282,10 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		if o.Selected {
 			bc = color.NRGBA{255, 210, 90, 240}
 		}
+	}
+	if o.DropTarget {
+		bw = float32(math.Max(3, math.Round(3*s)))
+		bc = color.NRGBA{79, 195, 247, 255}
 	}
 	fill(img, bc, func(z *vector.Rasterizer) {
 		roundRectPath(z, 0, 0, w, h, r, r, false)
@@ -406,7 +490,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		_ = g
 		hf := face(9 * 96 / 72 * s)
 		if hf != nil {
-			lines := []string{"Drag to move · drag edges to resize", "Double-click to edit · right-click for options"}
+			lines := []string{T("Drag to move · drag edges to resize"), T("Double-click to edit · right-click for options")}
 			d := &font.Drawer{Dst: img, Face: hf, Src: image.NewUniform(color.NRGBA{255, 255, 255, 220})}
 			m := hf.Metrics()
 			lh := (m.Ascent + m.Descent) * 5 / 4
@@ -575,4 +659,48 @@ func labelFace(px float64) font.Face {
 		win = `C:\Windows`
 	}
 	return faceFor(filepath.Join(win, "Fonts", "segoeui.ttf"), px)
+}
+
+// TintImage recolours img towards c (strength 0-100), keeping its light and
+// shade so the icon stays recognisable. Alpha is untouched.
+func TintImage(img image.Image, c color.NRGBA, strength int) *image.RGBA {
+	b := img.Bounds()
+	out := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
+	if strength <= 0 {
+		return out
+	}
+	k := float64(min(strength, 100)) / 100
+	tr, tg, tb := float64(c.R), float64(c.G), float64(c.B)
+	for i := 0; i+3 < len(out.Pix); i += 4 {
+		a := float64(out.Pix[i+3])
+		if a == 0 {
+			continue
+		}
+		r, g, bl := float64(out.Pix[i]), float64(out.Pix[i+1]), float64(out.Pix[i+2])
+		// premultiplied: luminance in 0..a
+		l := (0.299*r + 0.587*g + 0.114*bl) / a
+		// map dark->deep tint, light->pale tint
+		lift := func(t float64) float64 {
+			if l < 0.5 {
+				return t * l * 2
+			}
+			return t + (255-t)*(l-0.5)*2
+		}
+		nr, ng, nb := lift(tr)*a/255, lift(tg)*a/255, lift(tb)*a/255
+		out.Pix[i] = uint8(r + (nr-r)*k)
+		out.Pix[i+1] = uint8(g + (ng-g)*k)
+		out.Pix[i+2] = uint8(bl + (nb-bl)*k)
+	}
+	return out
+}
+
+// FadeImage scales a premultiplied image's strength (0..1).
+func FadeImage(img *image.RGBA, k float64) *image.RGBA {
+	out := image.NewRGBA(img.Bounds())
+	f := uint32(math.Round(math.Max(0, math.Min(1, k)) * 256))
+	for i, v := range img.Pix {
+		out.Pix[i] = uint8(uint32(v) * f >> 8)
+	}
+	return out
 }

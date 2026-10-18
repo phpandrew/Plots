@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -54,10 +54,10 @@ func latestRelease() (*Release, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 404 {
-		return nil, fmt.Errorf("no releases published yet")
+		return nil, errors.New(T("no releases published yet"))
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("GitHub answered %s", resp.Status)
+		return nil, errors.New(Tf("GitHub answered %s", resp.Status))
 	}
 	var r Release
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
@@ -82,7 +82,7 @@ func downloadUpdate(url string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("download failed: %s", resp.Status)
+		return errors.New(Tf("download failed: %s", resp.Status))
 	}
 	tmp := dst + ".part"
 	f, err := os.Create(tmp)
@@ -94,7 +94,7 @@ func downloadUpdate(url string) error {
 	if err != nil || n < 1<<20 { // a real build is several MB
 		os.Remove(tmp)
 		if err == nil {
-			err = fmt.Errorf("download was incomplete")
+			err = errors.New(T("download was incomplete"))
 		}
 		return err
 	}
