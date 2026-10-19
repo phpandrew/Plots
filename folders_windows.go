@@ -324,6 +324,13 @@ func (a *App) drawFolder(img *image.RGBA, p *Plot, v *PlotView) {
 		DrawFolderCells(img, []FolderCell{{Name: msg, X: 0, Y: v.Grid.Y - v.Rect.T, W: v.Rect.W(), H: sy}}, 0, v.Scale)
 		return
 	}
+	// file names in the colour that reads best on this plot and wallpaper
+	var ink color.NRGBA
+	{
+		bg, origin := wallpaperUnder(a.mons, v.Rect)
+		body := image.Rect(0, v.Grid.Y-v.Rect.T, v.Rect.W(), v.Rect.H())
+		ink, _ = Ink(Lum(img, bg, image.Pt(v.Rect.L-origin.X, v.Rect.T-origin.Y), body))
+	}
 	px := a.iconPx(v.Scale)
 	if p.IconSize > 0 {
 		px = int(math.Round(float64(p.IconSize) * v.Scale))
@@ -340,7 +347,7 @@ func (a *App) drawFolder(img *image.RGBA, p *Plot, v *PlotView) {
 		cells = append(cells, FolderCell{
 			Icon: a.tinted(p, e, px), Name: e.Name,
 			X: v.Grid.X - v.Rect.L + col*sx, Y: v.Grid.Y - v.Rect.T + row*sy, W: sx, H: sy,
-			Selected: e.Path == fs.sel,
+			Selected: e.Path == fs.sel, Ink: ink,
 		})
 	}
 	DrawFolderCells(img, cells, px, v.Scale)

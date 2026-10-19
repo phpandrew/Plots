@@ -35,6 +35,7 @@ type Plot struct {
 	FolderSort string   `json:"folderSort,omitempty"` // "name" (default), "date", "type", "size"
 	IconSize   int      `json:"iconSize,omitempty"`   // live folder icon size in px at 100% (0 = same as the desktop)
 	Locked     bool     `json:"locked,omitempty"`     // can't be moved, resized, merged or split
+	TitleColor string   `json:"titleColor,omitempty"` // "" = Appearance setting, "auto" = best contrast, or #RRGGBB
 }
 
 type Config struct {
@@ -51,6 +52,7 @@ type Config struct {
 	TitleSize          int      `json:"titleSize"` // title font size in pt
 	TitleFont          string   `json:"titleFont"` // font display name ("" = Segoe UI Semibold)
 	TitleColor         string   `json:"titleColor"`
+	TitleAuto          bool     `json:"titleAuto"`   // title text picks black or white for contrast
 	HeaderStyle        int      `json:"headerStyle"` // HeaderShade, HeaderSame, HeaderCustom, HeaderNone
 	HeaderColor        string   `json:"headerColor"`
 	UniformLook        bool     `json:"uniformLook"` // same colour & opacity for every plot
@@ -98,6 +100,7 @@ func DefaultConfig() *Config {
 		Padding:            10,
 		CornerRadius:       8,
 		TitleColor:         "#FFFFFF",
+		TitleAuto:          true,
 		HeaderColor:        "#202020",
 		UniformColor:       "#2B2B2B",
 		UniformOpacity:     60,

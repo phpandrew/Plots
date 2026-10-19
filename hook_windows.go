@@ -53,6 +53,7 @@ var (
 	dragLatest     Point
 	dragPosted     bool
 	swallowUp      bool // eat the button-up that belongs to a click we handled
+	swallowAt      time.Time
 	swallowRUp     bool
 	lastTitleClick time.Time
 	lastTitleID    string
@@ -265,7 +266,15 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 	}
 	if msg == WM_LBUTTONUP && swallowUp {
 		swallowUp = false
-		return true
+		// Only the release of the click we handled, on the desktop and soon
+		// after. A stale flag must never eat a click in another window (it
+		// made buttons such as "Choose…" need a second click).
+		if time.Since(swallowAt) < 5*time.Second && st.desk.IsDesktopWindow(call(pWindowFromPoint, pointArg(pt))) {
+			return true
+		}
+	}
+	if msg == WM_LBUTTONDOWN {
+		swallowUp = false // a new click: any earlier pending release is moot
 	}
 	if msg == WM_MOUSEMOVE {
 		hoverPeek(st, pt)
@@ -335,12 +344,12 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 				zp := plotZoneByID(st, id)
 				if z == 10 {
 					postMessage(hookMainWnd, msgToggleRoll, uintptr(zp.idx), 0)
-					swallowUp = true
+					swallowUp, swallowAt = true, time.Now()
 				} else {
 					postMessage(hookMainWnd, msgSelectTab, uintptr(zp.idx), uintptr(z-100))
 					// the tab may be dragged: to reorder, onto another plot, or out
 					if zp.locked {
-						swallowUp = true
+						swallowUp, swallowAt = true, time.Now()
 						return true
 					}
 					hookMu.Lock()
@@ -358,7 +367,7 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 					if zp := plotZoneByID(st, id); zp != nil {
 						postMessage(hookMainWnd, msgToggleRoll, uintptr(zp.idx), 0)
 					}
-					swallowUp = true
+					swallowUp, swallowAt = true, time.Now()
 					return true
 				}
 				lastTitleClick, lastTitleID = now, id
@@ -366,7 +375,7 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 			if _, z := zoneAt(st, pt); z == 0 {
 				if fz := folderBodyAt(st, pt); fz != nil {
 					postMessage(hookMainWnd, msgFolderClick, uintptr(fz.idx), packPt(pt))
-					swallowUp = true
+					swallowUp, swallowAt = true, time.Now()
 					lastDown = time.Time{}
 					return true
 				}
@@ -381,7 +390,7 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 				return true // don't let Explorer start a selection box
 			}
 			if id, z := zoneAt(st, pt); z == 9 && plotZoneByID(st, id).locked {
-				swallowUp = true // a locked title bar doesn't start a selection box either
+				swallowUp, swallowAt = true, time.Now() // a locked title bar doesn't start a selection box either
 				lastDown = time.Time{}
 				return true
 			}

@@ -179,9 +179,12 @@ type RenderOpts struct {
 	Header     int
 	HeaderCol  color.NRGBA
 	TitleCol   color.NRGBA
-	Grip       bool // show the "drag to move" indicator
-	Locked     bool // show a padlock instead of the move indicator
-	Radius     int  // corner radius in px at 100% scale; -1 = default (8)
+	TitleAuto  bool        // pick black or white text for the best contrast
+	Backdrop   *image.RGBA // what's behind the plot (wallpaper), for automatic contrast
+	BackdropAt image.Point // the plot's top-left in Backdrop
+	Grip       bool        // show the "drag to move" indicator
+	Locked     bool        // show a padlock instead of the move indicator
+	Radius     int         // corner radius in px at 100% scale; -1 = default (8)
 	Collapsed  bool
 	Chevron    bool // draw the roll-up button
 	TabNames   []string
@@ -293,6 +296,17 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		roundRectPath(z, bw, bw, w-bw, h-bw, max(0, r-bw), max(0, r-bw), true)
 	})
 
+	// title colour: chosen for contrast against what's actually behind it, or the user's colour
+	titleInk, titleShadow := o.TitleCol, shadowFor(o.TitleCol)
+	if o.TitleCol.A == 0 {
+		titleInk, titleShadow = color.NRGBA{255, 255, 255, 245}, color.NRGBA{0, 0, 0, 110}
+	}
+	if o.TitleAuto {
+		band := image.Rect(int(o.TitleH), 0, o.W-int(o.TitleH), o.TitleH)
+		titleInk, titleShadow = Ink(Lum(img, o.Backdrop, o.BackdropAt, band))
+	}
+	glyph := withA(titleInk, 170) // lock, move, roll-up and inbox marks
+
 	// title text
 	f := faceFor(o.FontFile, float64(o.TitlePt)*96/72*s)
 	if f != nil {
@@ -310,14 +324,10 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		tw := d.MeasureString(title)
 		x := (fixed.I(o.W) - tw) / 2
 		y := (fixed.I(o.TitleH)-(m.Ascent+m.Descent))/2 + m.Ascent
-		d.Src = image.NewUniform(color.NRGBA{0, 0, 0, 110})
+		d.Src = image.NewUniform(titleShadow)
 		d.Dot = fixed.Point26_6{X: x + fixed.I(1), Y: y + fixed.I(1)}
 		d.DrawString(title)
-		tcol := o.TitleCol
-		if tcol.A == 0 {
-			tcol = color.NRGBA{255, 255, 255, 245}
-		}
-		d.Src = image.NewUniform(tcol)
+		d.Src = image.NewUniform(titleInk)
 		d.Dot = fixed.Point26_6{X: x, Y: y}
 		d.DrawString(title)
 	}
@@ -326,7 +336,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 	if o.Locked {
 		cx, cy := float32(16*s), th/2
 		u := float32(s)
-		col := color.NRGBA{255, 255, 255, 170}
+		col := glyph
 		// body
 		fill(img, col, func(z *vector.Rasterizer) {
 			roundRectPath(z, cx-5*u, cy-1*u, cx+5*u, cy+6*u, 1.5*u, 1.5*u, false)
@@ -341,7 +351,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 	if o.Grip && !o.Locked {
 		cx, cy := float32(16*s), th/2
 		u := float32(s)
-		col := color.NRGBA{255, 255, 255, 170}
+		col := glyph
 		a, l, t := 6*u, 2.6*u, 0.9*u // arm length, head size, shaft half-width
 		fill(img, col, func(z *vector.Rasterizer) {
 			// horizontal shaft
@@ -381,7 +391,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		cx, cy := w-th/2, th/2
 		u := float32(s)
 		a, sw := 5*u, 1.7*u
-		col := color.NRGBA{255, 255, 255, 200}
+		col := withA(titleInk, 200)
 		dir := float32(1) // pointing up
 		if o.Collapsed {
 			dir = -1
@@ -416,12 +426,16 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 				break
 			}
 			active := i == o.ActiveTab
+			ink := titleInk
+			if o.TitleAuto {
+				ink, _ = Ink(Lum(img, o.Backdrop, o.BackdropAt, image.Rect(tr.L, tr.T, tr.R, tr.B)))
+			}
 			if active {
-				fill(img, color.NRGBA{255, 255, 255, 34}, func(z *vector.Rasterizer) {
+				fill(img, withA(ink, 34), func(z *vector.Rasterizer) {
 					roundRectPath(z, float32(tr.L)+2, float32(tr.T)+3, float32(tr.R)-2, float32(tr.B), float32(5*s), 0, false)
 				})
 				ul := float32(math.Max(2, math.Round(2*s)))
-				fill(img, color.NRGBA{255, 255, 255, 230}, func(z *vector.Rasterizer) {
+				fill(img, withA(ink, 230), func(z *vector.Rasterizer) {
 					roundRectPath(z, float32(tr.L)+float32(8*s), float32(tr.B)-ul, float32(tr.R)-float32(8*s), float32(tr.B), ul/2, ul/2, false)
 				})
 			}
@@ -444,7 +458,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 			if active {
 				alphaT = 250
 			}
-			d.Src = image.NewUniform(color.NRGBA{255, 255, 255, alphaT})
+			d.Src = image.NewUniform(withA(ink, alphaT))
 			d.Dot = fixed.Point26_6{X: fixed.I(tr.L) + (fixed.I(tr.W())-tw)/2, Y: fixed.I(tr.T) + (fixed.I(tr.H())-(m.Ascent+m.Descent))/2 + m.Ascent}
 			d.DrawString(name)
 		}
@@ -471,7 +485,7 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 			cx -= th - float32(6*s)
 		}
 		u := float32(s)
-		col := color.NRGBA{255, 255, 255, 200}
+		col := withA(titleInk, 200)
 		fill(img, col, func(z *vector.Rasterizer) {
 			z.MoveTo(cx-1.5*u, cy-7*u)
 			z.LineTo(cx+1.5*u, cy-7*u)
@@ -580,6 +594,7 @@ type FolderCell struct {
 	X, Y     int // cell top-left
 	W, H     int // cell size
 	Selected bool
+	Ink      color.NRGBA // label colour (zero = white)
 }
 
 // DrawFolderCells paints icons and two-line labels, Explorer style.
@@ -617,10 +632,16 @@ func DrawFolderCells(img *image.RGBA, cells []FolderCell, iconPx int, scale floa
 			d := &font.Drawer{Dst: img, Face: f}
 			tw := d.MeasureString(ln)
 			x := fixed.I(c.X) + (fixed.I(c.W)-tw)/2
-			d.Src = image.NewUniform(color.NRGBA{0, 0, 0, 150})
+			ink := c.Ink
+			if ink.A == 0 {
+				ink = color.NRGBA{255, 255, 255, 250}
+			}
+			sh := shadowFor(ink)
+			sh.A = 150
+			d.Src = image.NewUniform(sh)
 			d.Dot = fixed.Point26_6{X: x + fixed.I(1), Y: y + fixed.I(1)}
 			d.DrawString(ln)
-			d.Src = image.NewUniform(color.NRGBA{255, 255, 255, 250})
+			d.Src = image.NewUniform(ink)
 			d.Dot = fixed.Point26_6{X: x, Y: y}
 			d.DrawString(ln)
 			y += lh
@@ -720,3 +741,57 @@ func FadeImage(img *image.RGBA, k float64) *image.RGBA {
 	}
 	return out
 }
+
+// Lum is the perceived brightness (0-1) of a region of img composited over
+// backdrop (what's behind the plot). With no backdrop a dark desktop is assumed.
+func Lum(img *image.RGBA, backdrop *image.RGBA, at image.Point, r image.Rectangle) float64 {
+	r = r.Intersect(img.Bounds())
+	if r.Empty() {
+		return 0.2
+	}
+	step := max(2, min(r.Dx(), r.Dy())/12)
+	var sum float64
+	n := 0
+	for y := r.Min.Y; y < r.Max.Y; y += step {
+		for x := r.Min.X; x < r.Max.X; x += step {
+			i := img.PixOffset(x, y)
+			sa := float64(img.Pix[i+3]) / 255
+			br, bg, bb := 40.0, 40.0, 40.0
+			if backdrop != nil {
+				bp := image.Pt(x+at.X, y+at.Y)
+				if bp.In(backdrop.Bounds()) {
+					j := backdrop.PixOffset(bp.X, bp.Y)
+					br, bg, bb = float64(backdrop.Pix[j]), float64(backdrop.Pix[j+1]), float64(backdrop.Pix[j+2])
+				}
+			}
+			cr := float64(img.Pix[i]) + br*(1-sa)
+			cg := float64(img.Pix[i+1]) + bg*(1-sa)
+			cb := float64(img.Pix[i+2]) + bb*(1-sa)
+			sum += (0.2126*cr + 0.7152*cg + 0.0722*cb) / 255
+			n++
+		}
+	}
+	if n == 0 {
+		return 0.2
+	}
+	return sum / float64(n)
+}
+
+// Ink is the text colour (and its soft shadow) that reads best on a
+// background of brightness lum.
+func Ink(lum float64) (text, shadow color.NRGBA) {
+	if lum > 0.55 {
+		return color.NRGBA{20, 20, 20, 240}, color.NRGBA{255, 255, 255, 110}
+	}
+	return color.NRGBA{255, 255, 255, 245}, color.NRGBA{0, 0, 0, 120}
+}
+
+// shadowFor is a soft shadow that sets off text of colour c.
+func shadowFor(c color.NRGBA) color.NRGBA {
+	if 0.2126*float64(c.R)+0.7152*float64(c.G)+0.0722*float64(c.B) > 140 {
+		return color.NRGBA{0, 0, 0, 120}
+	}
+	return color.NRGBA{255, 255, 255, 110}
+}
+
+func withA(c color.NRGBA, a uint8) color.NRGBA { c.A = a; return c }

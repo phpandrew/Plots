@@ -180,6 +180,12 @@ func (a *App) updatePanels() {
 			log.Printf("panel %q screen=%v client=%v actual=%v", p.Title, v.Rect, pos, windowRect(pn.hwnd))
 		}
 		if key != pn.key {
+			if mode != "ulw" {
+				// automatic title contrast looks at the wallpaper behind the plot
+				if bg, origin := wallpaperUnder(a.mons, v.Rect); bg != nil {
+					o.Backdrop, o.BackdropAt = bg, image.Pt(v.Rect.L-origin.X, v.Rect.T-origin.Y)
+				}
+			}
 			plot := RenderPlot(o)
 			if p.Folder != "" {
 				a.drawFolder(plot, p, v)

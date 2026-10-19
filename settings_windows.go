@@ -75,6 +75,7 @@ type Settings struct {
 	inboxCombo, dl, dlLabel, direct, grow, snap, dbl, startup, flags HWND
 	peek, peekKey, peekWin, pollBar, pollLabel, status               HWND
 	langCombo                                                        HWND
+	titleModeCombo, plotTitleCombo, plotTitleSw                      HWND
 	comboIDs                                                         []string
 
 	// backup page
@@ -154,6 +155,10 @@ const (
 	idLanguage
 	idFadeIcons
 	idLock
+	idTitleMode
+	idPlotTitleMode
+	idPlotTitleSw
+	idPlotTitleChoose
 )
 
 var (
@@ -501,6 +506,10 @@ func (s *Settings) buildPlotPage() {
 	s.chooseBtn = l.pg.ctls[len(l.pg.ctls)-1]
 	cy, _ = l.row(T("Opacity"), "", 280)
 	s.opacity, s.opLabel = l.slider(cy, 0, 100, idOpacity)
+	cy, _ = l.row(T("Title text"), T("Automatic picks black or white, whichever is easier to read on this plot and your wallpaper."), 280)
+	s.plotTitleCombo = l.combo(cy, 280, idPlotTitleMode, T("Same as Appearance"), T("Automatic (best contrast)"), T("Custom colour"))
+	cy, _ = l.row(T("Custom title colour"), "", 156)
+	s.plotTitleSw = l.swatch(cy, idPlotTitleSw, idPlotTitleChoose)
 	cy, _ = l.row(T("Rolled up"), T("Only the title bar shows. Hover over it to peek."), 56)
 	s.rollToggle = l.toggle(cy, idRoll)
 	cy, _ = l.row(T("Locked"), T("The plot can't be moved, resized, merged or split. Icons can still be added and removed."), 56)
@@ -558,7 +567,9 @@ func (s *Settings) buildLookPage() {
 	s.fontCombo = l.combo(cy, 280, idFont)
 	cy, _ = l.row(T("Size"), "", 280)
 	s.sizeBar, s.sizeLabel = l.slider(cy, 8, 24, idSize)
-	cy, _ = l.row(T("Text colour"), "", 156)
+	cy, _ = l.row(T("Title text"), T("Automatic picks black or white, whichever is easier to read on each plot and your wallpaper."), 280)
+	s.titleModeCombo = l.combo(cy, 280, idTitleMode, T("Automatic (best contrast)"), T("Custom colour"))
+	cy, _ = l.row(T("Custom text colour"), "", 156)
 	s.titleSw = l.swatch(cy, idTitleSw, idTitleChoose)
 	cy, _ = l.row(T("Header band"), "", 280)
 	s.headerCombo = l.combo(cy, 280, idHeader, T("Darker shade of the plot colour"), T("Same as the plot"), T("Custom colour"), T("No header band"))
@@ -1173,6 +1184,20 @@ func (s *Settings) loadPlot() {
 	}
 	setCheck(s.rollToggle, p.Collapsed)
 	setCheck(s.lockToggle, p.Locked)
+	tmode := 0
+	switch {
+	case p.TitleColor == "auto":
+		tmode = 1
+	case strings.HasPrefix(p.TitleColor, "#"):
+		tmode = 2
+	}
+	sendMessage(s.plotTitleCombo, 0x14E, uintptr(tmode), 0)
+	tc := s.a.cfg.TitleColor
+	if tmode == 2 {
+		tc = p.TitleColor
+	}
+	s.setBrush(s.plotTitleSw, tc)
+	enable(tmode == 2, s.plotTitleSw)
 	setWindowText(s.folderEdit, p.Folder)
 	sortIdx := map[string]int{"": 0, "name": 0, "date": 1, "type": 2, "size": 3}[p.FolderSort]
 	sendMessage(s.sortCombo, 0x14E, uintptr(sortIdx), 0)
@@ -1305,6 +1330,12 @@ func (s *Settings) refreshLook() {
 	setWindowText(s.uniLabel, fmt.Sprintf("%d%%", c.UniformOpacity))
 	setCheck(s.uniform, c.UniformLook)
 	s.setBrush(s.titleSw, c.TitleColor)
+	mode := 0
+	if !c.TitleAuto {
+		mode = 1
+	}
+	sendMessage(s.titleModeCombo, 0x14E, uintptr(mode), 0)
+	enable(!c.TitleAuto, s.titleSw)
 	s.setBrush(s.headerSw, c.HeaderColor)
 	s.setBrush(s.uniSw, c.UniformColor)
 	s.setBrush(s.tintSw, c.TintColor)
@@ -1728,7 +1759,40 @@ func (s *Settings) command(id int, code uint32) {
 	case idTitleSw, idTitleChoose:
 		if c, ok := chooseColor(s.hwnd, ParseHex(a.cfg.TitleColor)); ok {
 			a.cfg.TitleColor = ToHex(c)
+			a.cfg.TitleAuto = false
 			s.lookChanged()
+		}
+	case idTitleMode:
+		if code == 1 {
+			a.cfg.TitleAuto = sendMessage(s.titleModeCombo, 0x147, 0, 0) == 0
+			s.lookChanged()
+		}
+	case idPlotTitleMode:
+		if code == 1 && p != nil {
+			switch sendMessage(s.plotTitleCombo, 0x147, 0, 0) {
+			case 0:
+				p.TitleColor = ""
+			case 1:
+				p.TitleColor = "auto"
+			default:
+				if !strings.HasPrefix(p.TitleColor, "#") {
+					p.TitleColor = a.cfg.TitleColor
+				}
+			}
+			a.plotChanged()
+			s.loadPlot()
+		}
+	case idPlotTitleSw, idPlotTitleChoose:
+		if p != nil {
+			cur := a.cfg.TitleColor
+			if strings.HasPrefix(p.TitleColor, "#") {
+				cur = p.TitleColor
+			}
+			if c, ok := chooseColor(s.hwnd, ParseHex(cur)); ok {
+				p.TitleColor = ToHex(c)
+				a.plotChanged()
+				s.loadPlot()
+			}
 		}
 	case idHeaderSw, idHeaderChoose:
 		if c, ok := chooseColor(s.hwnd, ParseHex(a.cfg.HeaderColor)); ok {
