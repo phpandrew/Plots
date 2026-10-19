@@ -85,6 +85,7 @@ type App struct {
 	dropTarget     string // plot highlighted as a merge target while dragging
 	tabGhost       HWND
 	reopenPage     string
+	shutDown       bool
 }
 
 var app *App
@@ -244,6 +245,10 @@ func (a *App) run() {
 }
 
 func (a *App) shutdown() {
+	if a.shutDown {
+		return
+	}
+	a.shutDown = true
 	if a.desk != nil && isWindow(a.desk.ListView) {
 		call(pShowWindow, a.desk.ListView, SW_SHOWNA)
 	}
@@ -412,6 +417,16 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 	case WM_APP + 11:
 		call(pSetTimer, a.main, timerTick, uintptr(a.cfg.PollMs), 0)
 		return 0
+	case 0x0011: // WM_QUERYENDSESSION: Windows is shutting down or signing out
+		return 1
+	case 0x0016: // WM_ENDSESSION
+		if wp != 0 {
+			// the process ends right after this: put hidden icons back and save
+			log.Println("Windows is ending the session; saving and restoring icons")
+			a.quitting = true
+			a.shutdown()
+		}
+		return 0
 	case msgReopenSettings:
 		a.reopenSettings()
 		return 0
@@ -459,6 +474,7 @@ func (a *App) attach() {
 	} else {
 		call(pShowWindow, a.desk.ListView, SW_SHOWNA)
 	}
+	resetIconAlpha(a.desk)
 	log.Printf("desktop: progman=%x defview=%x list=%x host=%x(%s) after=%x",
 		a.desk.Progman, a.desk.DefView, a.desk.ListView, a.desk.Host, className(a.desk.Host), a.desk.InsertAfter)
 	dumpTree("Progman children", a.desk.Progman)
@@ -615,7 +631,7 @@ func (a *App) renderOpts(p *Plot, v *PlotView, edit bool) RenderOpts {
 	return RenderOpts{
 		W: v.Rect.W(), H: v.Rect.H(), Scale: v.Scale, TitleH: c.TitleH(v.Scale),
 		Title: p.Title, Color: col, Opacity: op, TitlePt: c.TitleSize,
-		FontFile: fontFile(c.TitleFont), Header: c.HeaderStyle, Grip: c.DirectEdit && !edit,
+		FontFile: fontFile(c.TitleFont), Header: c.HeaderStyle, Grip: c.DirectEdit && !edit, Locked: p.Locked,
 		HeaderCol: ParseHex(c.HeaderColor), TitleCol: ParseHex(c.TitleColor),
 		Inbox: c.InboxPlot == p.ID, Edit: edit, Selected: edit && a.selected == p.ID,
 		Radius:  c.CornerRadius,
@@ -649,7 +665,7 @@ func (a *App) IsDir(path string) bool {
 // lookKey changes whenever anything affecting a plot's appearance changes.
 func (a *App) lookKey(o RenderOpts) string {
 	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d|%v|%v|%d|%v|%d/%d/%d", o.Title+fmt.Sprint(o.Radius), o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
-		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows) + fmt.Sprint(o.DropTarget)
+		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows) + fmt.Sprint(o.DropTarget, o.Locked)
 }
 
 func (a *App) setHidden(h bool) {
@@ -707,13 +723,13 @@ func (a *App) publishHookState() {
 				idx, rolled = i, p.Collapsed
 			}
 		}
-		folder := false
+		folder, locked := false, false
 		if p := a.cfg.Plot(v.ID); p != nil {
-			folder = p.Folder != ""
+			folder, locked = p.Folder != "", p.Locked
 		}
 		st.plots = append(st.plots, plotZone{id: v.ID, idx: idx, rect: v.Rect, title: v.Title, chevron: v.Chevron,
 			tabs: v.Tabs, edge: int(math.Round(8 * v.Scale)), collapsed: v.Collapsed, rolled: rolled, scrolls: v.MaxScroll > 0,
-			folder: folder})
+			folder: folder, locked: locked})
 	}
 	for path, pos := range a.eng.last {
 		if a.eng.IsParked(path) {

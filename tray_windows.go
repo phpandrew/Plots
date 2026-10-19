@@ -92,6 +92,7 @@ const (
 	cmdRoll
 	cmdTabs
 	cmdNewFolder
+	cmdLock
 	cmdOpacityBase = 200
 	cmdModeBase    = 400
 )
@@ -135,6 +136,7 @@ func (a *App) plotMenu(id string, at Point) {
 	m.item(cmdInbox, T("New desktop items go here"), a.cfg.InboxPlot == id, false)
 	m.item(cmdRoll, T("Roll up"), p.Collapsed, false)
 	m.item(cmdTabs, T("Tabs…"), false, false)
+	m.item(cmdLock, T("Lock plot"), p.Locked, false)
 	m.sep()
 	m.item(cmdEdit, T("Edit plots"), a.editing, false)
 	m.item(cmdNewPlot, T("New plot"), false, false)
@@ -188,6 +190,11 @@ func (a *App) runCmd(cmd int, plotID string) {
 		p.Collapsed = !p.Collapsed
 		a.eng.Peek = ""
 		a.plotChanged()
+		a.tick()
+	case cmd == cmdLock && p != nil:
+		p.Locked = !p.Locked
+		a.plotChanged()
+		a.publishHookState()
 		a.tick()
 	case cmd == cmdTabs && p != nil:
 		a.showSettings(plotID)

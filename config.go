@@ -34,6 +34,7 @@ type Plot struct {
 	Folder     string   `json:"folder,omitempty"`     // live folder: show this folder's contents
 	FolderSort string   `json:"folderSort,omitempty"` // "name" (default), "date", "type", "size"
 	IconSize   int      `json:"iconSize,omitempty"`   // live folder icon size in px at 100% (0 = same as the desktop)
+	Locked     bool     `json:"locked,omitempty"`     // can't be moved, resized, merged or split
 }
 
 type Config struct {

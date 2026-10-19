@@ -5,6 +5,7 @@ package main
 import (
 	"log"
 	"math"
+	"unsafe"
 )
 
 // Fading the desktop icons along with the plots. Explorer draws the icons in
@@ -96,4 +97,25 @@ func (a *App) restoreIcons() {
 		iconFailed = false
 		a.setIconAlpha(1)
 	}
+}
+
+// resetIconAlpha undoes a fade left behind if Plots was closed abruptly
+// (a crash or being killed), so the icons are never stuck faded.
+func resetIconAlpha(d *Desktop) {
+	if d == nil {
+		return
+	}
+	for _, h := range []HWND{d.DefView, d.ListView} {
+		if h == 0 || call(pGetWindowLongPtrW, h, ^uintptr(19))&WS_EX_LAYERED == 0 {
+			continue
+		}
+		var key uint32
+		var alpha byte
+		var flags uint32
+		if r, _, _ := pGetLayeredWindowAttributes.Call(h, uintptr(unsafe.Pointer(&key)), uintptr(unsafe.Pointer(&alpha)), uintptr(unsafe.Pointer(&flags))); r != 0 && flags&LWA_ALPHA != 0 && alpha < 255 {
+			log.Printf("desktop icons were left faded (alpha %d); restoring", alpha)
+			call(pSetLayeredWindowAttributes, h, 0, 255, LWA_ALPHA)
+		}
+	}
+	iconFade, iconHwnd, iconAddedEx, iconFailed = 1, 0, false, false
 }

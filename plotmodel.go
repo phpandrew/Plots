@@ -183,7 +183,7 @@ func itoa(i int) string {
 // CanMerge reports whether src can be dropped onto dst as tabs.
 func (c *Config) CanMerge(srcID, dstID string) bool {
 	src, dst := c.Plot(srcID), c.Plot(dstID)
-	return src != nil && dst != nil && src != dst && src.Folder == "" && dst.Folder == ""
+	return src != nil && dst != nil && src != dst && src.Folder == "" && dst.Folder == "" && !src.Locked && !dst.Locked
 }
 
 // MergePlots moves every tab of src into dst (as extra tabs) and removes src.
@@ -231,7 +231,7 @@ func (c *Config) MergePlots(srcID, dstID string) bool {
 // placed: the caller sets its position). The source keeps its other tabs.
 func (c *Config) SplitTab(id string, i int) *Plot {
 	p := c.Plot(id)
-	if p == nil || p.Folder != "" {
+	if p == nil || p.Folder != "" || p.Locked {
 		return nil
 	}
 	p.Norm()

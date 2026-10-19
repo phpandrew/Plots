@@ -41,6 +41,7 @@ type plotZone struct {
 	rolled    bool // rolled up in config (peeking or not)
 	scrolls   bool
 	folder    bool // live-folder plot: Plots handles clicks on its contents
+	locked    bool // can't be moved or resized
 }
 
 // drag state, owned by the hook thread
@@ -104,6 +105,13 @@ func zoneAt(st *hookState, pt Point) (string, int) {
 			if t.Contains(pt) {
 				return z.id, 100 + i
 			}
+		}
+		if z.locked {
+			// locked: no resize edges; the title still answers double-clicks (roll up) but can't be dragged
+			if z.title.Contains(pt) {
+				return z.id, 9
+			}
+			return "", 0
 		}
 		left, right := pt.X < r.L+z.edge, pt.X >= r.R-z.edge
 		bottom := pt.Y >= r.B-z.edge
@@ -331,6 +339,10 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 				} else {
 					postMessage(hookMainWnd, msgSelectTab, uintptr(zp.idx), uintptr(z-100))
 					// the tab may be dragged: to reorder, onto another plot, or out
+					if zp.locked {
+						swallowUp = true
+						return true
+					}
 					hookMu.Lock()
 					tabDragPlot, tabDragIdx, tabDragStart, tabDragPt, tabDragActive = id, z-100, pt, pt, false
 					hookMu.Unlock()
@@ -359,7 +371,7 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 					return true
 				}
 			}
-			if id, z := zoneAt(st, pt); z != 0 && (z == 9 || !onIcon) {
+			if id, z := zoneAt(st, pt); z != 0 && (z == 9 || !onIcon) && !plotZoneByID(st, id).locked {
 				hookMu.Lock()
 				dragID, dragZone, dragStart, dragLatest, dragPosted = id, z, pt, pt, false
 				hookMu.Unlock()
@@ -367,6 +379,11 @@ func handleMouse(st *hookState, msg uint32, pt Point) bool {
 				lastDown = time.Time{}
 				postMessage(hookMainWnd, msgDragStart, 0, 0)
 				return true // don't let Explorer start a selection box
+			}
+			if id, z := zoneAt(st, pt); z == 9 && plotZoneByID(st, id).locked {
+				swallowUp = true // a locked title bar doesn't start a selection box either
+				lastDown = time.Time{}
+				return true
 			}
 		}
 		if !st.dblHide {

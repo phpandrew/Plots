@@ -57,7 +57,7 @@ type Settings struct {
 	// plot page
 	plotHeader, monLabel, title, swatch, chooseBtn, opacity, opLabel HWND
 	inbox, rollToggle, tabsEdit, folderEdit, folderClear, sortCombo  HWND
-	iconCombo, deleteBtn                                             HWND
+	iconCombo, deleteBtn, lockToggle                                 HWND
 
 	// appearance page
 	fontCombo, sizeBar, sizeLabel, titleSw, headerCombo, headerSw HWND
@@ -153,6 +153,7 @@ const (
 	idFade
 	idLanguage
 	idFadeIcons
+	idLock
 )
 
 var (
@@ -502,6 +503,8 @@ func (s *Settings) buildPlotPage() {
 	s.opacity, s.opLabel = l.slider(cy, 0, 100, idOpacity)
 	cy, _ = l.row(T("Rolled up"), T("Only the title bar shows. Hover over it to peek."), 56)
 	s.rollToggle = l.toggle(cy, idRoll)
+	cy, _ = l.row(T("Locked"), T("The plot can't be moved, resized, merged or split. Icons can still be added and removed."), 56)
+	s.lockToggle = l.toggle(cy, idLock)
 
 	l.section(T("Contents"))
 	cy, _ = l.row(T("New desktop items go here"), T("Anything saved or downloaded to the desktop lands in this plot."), 56)
@@ -1169,6 +1172,7 @@ func (s *Settings) loadPlot() {
 		setWindowText(s.tabsEdit, names)
 	}
 	setCheck(s.rollToggle, p.Collapsed)
+	setCheck(s.lockToggle, p.Locked)
 	setWindowText(s.folderEdit, p.Folder)
 	sortIdx := map[string]int{"": 0, "name": 0, "date": 1, "type": 2, "size": 3}[p.FolderSort]
 	sendMessage(s.sortCombo, 0x14E, uintptr(sortIdx), 0)
@@ -1621,6 +1625,13 @@ func (s *Settings) command(id int, code uint32) {
 			if i := int(sendMessage(s.deskIconCombo, 0x147, 0, 0)); i >= 0 && i < len(iconSizes) {
 				a.setDesktopIconSize(iconSizes[i])
 			}
+		}
+	case idLock:
+		if p != nil {
+			p.Locked = checked(s.lockToggle)
+			a.plotChanged()
+			a.publishHookState()
+			a.tick()
 		}
 	case idRoll:
 		if p != nil {

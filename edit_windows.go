@@ -230,6 +230,9 @@ func (a *App) overlayWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		if o == nil {
 			break
 		}
+		if p := a.cfg.Plot(o.id); p != nil && p.Locked {
+			return HTCLIENT // locked: can be selected, not moved or resized
+		}
 		pt := Point{int(getXLParam(lp)), int(getYLParam(lp))}
 		r := windowRect(h)
 		m := monitorAt(a.mons, pt)

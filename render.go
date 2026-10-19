@@ -180,6 +180,7 @@ type RenderOpts struct {
 	HeaderCol  color.NRGBA
 	TitleCol   color.NRGBA
 	Grip       bool // show the "drag to move" indicator
+	Locked     bool // show a padlock instead of the move indicator
 	Radius     int  // corner radius in px at 100% scale; -1 = default (8)
 	Collapsed  bool
 	Chevron    bool // draw the roll-up button
@@ -321,8 +322,23 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		d.DrawString(title)
 	}
 
+	// padlock for locked plots
+	if o.Locked {
+		cx, cy := float32(16*s), th/2
+		u := float32(s)
+		col := color.NRGBA{255, 255, 255, 170}
+		// body
+		fill(img, col, func(z *vector.Rasterizer) {
+			roundRectPath(z, cx-5*u, cy-1*u, cx+5*u, cy+6*u, 1.5*u, 1.5*u, false)
+		})
+		// shackle
+		fill(img, col, func(z *vector.Rasterizer) {
+			roundRectPath(z, cx-3.6*u, cy-6.5*u, cx+3.6*u, cy+1*u, 3.6*u, 3.6*u, false)
+			roundRectPath(z, cx-2.1*u, cy-5*u, cx+2.1*u, cy+1*u, 2.1*u, 2.1*u, true)
+		})
+	}
 	// move indicator: four-way arrow at the title's left
-	if o.Grip {
+	if o.Grip && !o.Locked {
 		cx, cy := float32(16*s), th/2
 		u := float32(s)
 		col := color.NRGBA{255, 255, 255, 170}
