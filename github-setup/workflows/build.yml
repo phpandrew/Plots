@@ -100,33 +100,10 @@ jobs:
     needs: [build, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 330
     permissions:
       contents: write # create the tag and release
-      actions: read # SignPath reads the build artifact
     steps:
-      # Code signing by SignPath Foundation (docs/CODE_SIGNING.md). It runs once
-      # the SIGNPATH_* repository variables and the SIGNPATH_API_TOKEN secret
-      # are set; until then releases go out unsigned. Every release waits for
-      # a manual approval in SignPath.
-      - name: Sign Plots.exe (SignPath)
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: signpath/github-action-submit-signing-request@v3
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 18000 # 5 h to approve
-          output-artifact-directory: dist
-          parameters: |
-            version: ${{ toJSON(needs.build.outputs.version) }}
-
-      - name: Use the unsigned build
-        if: vars.SIGNPATH_ORGANIZATION_ID == ''
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
           name: Plots-v${{ needs.build.outputs.version }}
           path: dist
@@ -141,6 +118,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Plots v$V" \
             --target "$GITHUB_SHA" \
-            --notes "Download \`Plots.exe\` and run it. [Code signing policy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/CODE_SIGNING.md)" \
+            --notes "Download \`Plots.exe\` and run it. Windows may warn that it's from an unknown publisher: click **More info › Run anyway**. [Privacy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/PRIVACY.md)" \
             --generate-notes \
             --latest

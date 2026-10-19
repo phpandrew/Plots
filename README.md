@@ -65,6 +65,8 @@ Plots is translated into French, Spanish, Brazilian Portuguese, German, Simplifi
 ## Run it
 Download `Plots.exe` from the [latest release](https://github.com/phpandrew/Plots/releases/latest). There's nothing to install.
 
+**First run:** Plots isn't code-signed, so Windows may show *"Windows protected your PC"*. Click **More info**, then **Run anyway**. Windows only asks once per download. Every release is built from this repository by GitHub Actions and security-scanned before it's published ([how](docs/SECURITY-FLOW.md)).
+
 1. **Quit Fences first.** Both apps move the same desktop icons and will fight each other.
 2. Double-click `Plots.exe`. The Plots icon appears in the tray.
 3. First run opens **edit mode** with one plot.
@@ -121,10 +123,8 @@ Every push to `main` is scanned with **govulncheck** and **CodeQL** before it's 
 - **Dependabot** (`.github/dependabot.yml`) opens grouped pull requests every Monday for Go modules and GitHub Actions.
 - Builds always use the newest Go 1.26 patch release, so standard-library security fixes are picked up automatically.
 
-## Code signing policy
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). Releases are built by GitHub Actions from this repository and each signing is approved by hand. Team, privacy and process: [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md).
-
-**Privacy:** Plots sends nothing about you or your PC anywhere. Its only network use is checking GitHub for new versions of Plots, which you can turn off under Settings › About.
+## Privacy
+Plots sends nothing about you or your PC anywhere. Its only network use is checking GitHub for new versions of Plots, which you can turn off under Settings › About. Details: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## License
 [MIT](LICENSE) © Andrew Lyle
