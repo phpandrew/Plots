@@ -52,6 +52,7 @@ const (
 	idCheckUpd
 	idAutoUpd
 	idInstall
+	idOpenLogs
 )
 
 const (
@@ -194,6 +195,10 @@ func (s *Settings) buildAbout() {
 	l.button(T("Check now"), cy, ctlR-150, 150, idCheckUpd)
 	cy, _ = l.row(T("Check for updates automatically"), T("Plots looks for a new release at start-up and every 6 hours."), 56)
 	s.autoUpd = l.toggle(cy, idAutoUpd)
+
+	l.section(T("Troubleshooting"))
+	cy, _ = l.row(T("Log files"), T("Opens the folder with plots.log, plots.prev.log and crash.log. Attach them when you report a problem."), 160)
+	l.button(T("Open folder"), cy, ctlR-160, 160, idOpenLogs)
 	l.done()
 }
 
@@ -229,6 +234,8 @@ func (s *Settings) aboutCommand(id int) bool {
 	case idCheckUpd:
 		a.setUpdateStatus(T("Checking GitHub…"), false)
 		a.checkForUpdates(true)
+	case idOpenLogs:
+		openURL(plotsDir())
 	case idInstall:
 		a.setUpdateStatus(T("Downloading…"), false)
 		a.installUpdate()
