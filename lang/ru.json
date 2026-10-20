@@ -165,6 +165,7 @@
   "Plot": "Участок",
   "Plot %d": "Участок %d",
   "Plots config": "Конфигурация Plots",
+  "Plots keeps stopping unexpectedly, so it won't restart on its own.\n\nThe details are in crash.log in %APPDATA%\\Plots. Please report it on GitHub.": "Plots постоянно неожиданно завершает работу, поэтому не будет перезапускаться автоматически.\n\nПодробности — в файле crash.log в папке %APPDATA%\\Plots. Сообщите о проблеме на GitHub.",
   "Plots layout": "Макет Plots",
   "Plots looks for a new release at start-up and every 6 hours.": "Plots проверяет наличие новой версии при запуске и каждые 6 часов.",
   "Plots stay faded into the wallpaper and come into focus when the mouse is over them.": "Участки сливаются с фоном рабочего стола и проявляются при наведении указателя мыши.",

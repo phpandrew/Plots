@@ -165,6 +165,7 @@
   "Plot": "Parcela",
   "Plot %d": "Parcela %d",
   "Plots config": "Configuración de Plots",
+  "Plots keeps stopping unexpectedly, so it won't restart on its own.\n\nThe details are in crash.log in %APPDATA%\\Plots. Please report it on GitHub.": "Plots se detiene inesperadamente una y otra vez, así que no se reiniciará solo.\n\nLos detalles están en crash.log, en %APPDATA%\\Plots. Infórmalo en GitHub.",
   "Plots layout": "Diseño de Plots",
   "Plots looks for a new release at start-up and every 6 hours.": "Plots busca una nueva versión al iniciarse y cada 6 horas.",
   "Plots stay faded into the wallpaper and come into focus when the mouse is over them.": "Las parcelas se funden con el fondo de pantalla y se resaltan al pasar el mouse por encima.",

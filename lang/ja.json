@@ -165,6 +165,7 @@
   "Plot": "区画",
   "Plot %d": "区画 %d",
   "Plots config": "Plots の構成",
+  "Plots keeps stopping unexpectedly, so it won't restart on its own.\n\nThe details are in crash.log in %APPDATA%\\Plots. Please report it on GitHub.": "Plots が予期せず停止し続けるため、自動では再起動しません。\n\n詳細は %APPDATA%\\Plots の crash.log にあります。GitHub で報告してください。",
   "Plots layout": "Plots のレイアウト",
   "Plots looks for a new release at start-up and every 6 hours.": "Plots は起動時と 6 時間ごとに新しいリリースを確認します。",
   "Plots stay faded into the wallpaper and come into focus when the mouse is over them.": "区画は壁紙に溶け込むように薄く表示され、マウス ポインターを合わせるとはっきり表示されます。",

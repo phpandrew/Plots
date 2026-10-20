@@ -165,6 +165,7 @@
   "Plot": "Lote",
   "Plot %d": "Lote %d",
   "Plots config": "Configuração do Plots",
+  "Plots keeps stopping unexpectedly, so it won't restart on its own.\n\nThe details are in crash.log in %APPDATA%\\Plots. Please report it on GitHub.": "O Plots continua parando inesperadamente, então não será reiniciado sozinho.\n\nOs detalhes estão em crash.log, em %APPDATA%\\Plots. Informe o problema no GitHub.",
   "Plots layout": "Layout do Plots",
   "Plots looks for a new release at start-up and every 6 hours.": "O Plots procura uma nova versão ao iniciar e a cada 6 horas.",
   "Plots stay faded into the wallpaper and come into focus when the mouse is over them.": "Os lotes ficam esmaecidos no papel de parede e ganham destaque quando o mouse está sobre eles.",

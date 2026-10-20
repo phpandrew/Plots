@@ -165,6 +165,7 @@
   "Plot": "Bereich",
   "Plot %d": "Bereich %d",
   "Plots config": "Plots-Konfiguration",
+  "Plots keeps stopping unexpectedly, so it won't restart on its own.\n\nThe details are in crash.log in %APPDATA%\\Plots. Please report it on GitHub.": "Plots wird immer wieder unerwartet beendet und startet daher nicht mehr von selbst.\n\nDetails stehen in crash.log unter %APPDATA%\\Plots. Bitte melden Sie das auf GitHub.",
   "Plots layout": "Plots-Layout",
   "Plots looks for a new release at start-up and every 6 hours.": "Plots sucht beim Start und alle 6 Stunden nach einer neuen Version.",
   "Plots stay faded into the wallpaper and come into focus when the mouse is over them.": "Bereiche bleiben in den Hintergrund abgeblendet und werden deutlich, sobald sich die Maus darüber befindet.",

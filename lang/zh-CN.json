@@ -165,6 +165,7 @@
   "Plot": "分区",
   "Plot %d": "分区 %d",
   "Plots config": "Plots 配置",
+  "Plots keeps stopping unexpectedly, so it won't restart on its own.\n\nThe details are in crash.log in %APPDATA%\\Plots. Please report it on GitHub.": "Plots 反复意外停止，因此不会自动重新启动。\n\n详细信息位于 %APPDATA%\\Plots 中的 crash.log。请在 GitHub 上报告此问题。",
   "Plots layout": "Plots 布局",
   "Plots looks for a new release at start-up and every 6 hours.": "Plots 会在启动时及每 6 小时检查一次新版本。",
   "Plots stay faded into the wallpaper and come into focus when the mouse is over them.": "分区会淡化融入壁纸，鼠标悬停时再清晰显示。",

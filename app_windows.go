@@ -95,7 +95,25 @@ func init() { runtime.LockOSThread() }
 func main() {
 	call(pSetProcessDpiAwarenessCtx, ^uintptr(3)) // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4)
 
-	afterUpdate := len(os.Args) > 1 && os.Args[1] == "--after-update"
+	child, afterUpdate := false, false
+	for _, a := range os.Args[1:] {
+		switch a {
+		case childFlag:
+			child = true
+		case "--after-update":
+			afterUpdate = true
+		}
+	}
+	if !child {
+		supervise(afterUpdate)
+		return
+	}
+	runApp(afterUpdate)
+}
+
+// runApp is the app itself (the --child process).
+func runApp(afterUpdate bool) {
+	captureCrashes()
 	for tries := 0; ; tries++ {
 		h, _, err := pCreateMutexW.Call(0, 0, up("Local\\PlotsDesktopGroups"))
 		if h == 0 || err != windows.ERROR_ALREADY_EXISTS {
@@ -116,9 +134,9 @@ func main() {
 	icc := [2]uint32{8, 0x4 | 0x20 | 0x1} // ICC_BAR_CLASSES | ICC_STANDARD_CLASSES | ICC_LISTVIEW
 	call(pInitCommonControlsEx, uintptr(unsafe.Pointer(&icc)))
 
-	appData, _ := os.UserConfigDir()
-	dir := filepath.Join(appData, "Plots")
-	os.MkdirAll(dir, 0o755)
+	dir := plotsDir()
+	// keep the previous run's log: after a crash it shows what happened last
+	os.Rename(filepath.Join(dir, "plots.log"), filepath.Join(dir, "plots.prev.log"))
 	if f, err := os.OpenFile(filepath.Join(dir, "plots.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); err == nil {
 		log.SetOutput(f)
 	}
