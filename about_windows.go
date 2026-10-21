@@ -287,7 +287,7 @@ func (s *Settings) drawAbout(di *DRAWITEMSTRUCT) bool {
 	case idGitHub:
 		loadImages()
 		img := image.NewRGBA(image.Rect(0, 0, w, h))
-		draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
+		draw.Draw(img, img.Bounds(), image.NewUniform(bgr(clrWhite)), image.Point{}, draw.Src)
 		acc := bgr(clrAccent)
 		if di.ItemState&1 != 0 { // pressed
 			acc = shade(acc, 0.88)

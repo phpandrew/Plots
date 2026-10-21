@@ -84,6 +84,7 @@ type Config struct {
 	FadeLevel          int      `json:"fadeLevel"`    // resting strength, 10-90 %
 	FadeIcons          bool     `json:"fadeIcons"`    // fade the desktop icons too (all together)
 	Language           string   `json:"language"`     // UI language code, "" = follow Windows
+	Theme              string   `json:"theme"`        // "", "light" or "dark" ("" = follow Windows)
 }
 
 const (

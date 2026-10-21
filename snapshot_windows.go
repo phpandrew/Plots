@@ -42,6 +42,19 @@ func (a *App) checkSnapshotRequest() {
 	for _, f := range strings.Fields(string(b)) {
 		if strings.HasPrefix(f, "lang=") {
 			lang = strings.TrimPrefix(f, "lang=")
+		} else if strings.HasPrefix(f, "theme=") {
+			themeForced = strings.TrimPrefix(f, "theme=")
+			if a.settings != nil {
+				call(pDestroyWindow, a.settings.hwnd)
+			}
+			a.applyTheme()
+			defer func() {
+				themeForced = ""
+				if a.settings != nil {
+					call(pDestroyWindow, a.settings.hwnd)
+				}
+				a.applyTheme()
+			}()
 		} else {
 			pages = append(pages, f)
 		}

@@ -149,6 +149,7 @@ func runApp(afterUpdate bool) {
 	a := &App{cfgPath: cfgPath, cfg: cfg, panels: map[string]*panel{}, overlays: map[string]*overlay{}}
 	app = a
 	a.applyLanguage()
+	a.applyTheme()
 	a.eng = NewEngine(cfg, a)
 	a.eng.Logf = log.Printf
 	a.eng.FolderDrop = a.moveIntoFolder
@@ -452,6 +453,13 @@ func (a *App) mainWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		a.showSettings("")
 		return 0
 	case WM_DISPLAYCHANGE, WM_SETTINGCHANGE, WM_DPICHANGED:
+		if msg == WM_SETTINGCHANGE && lp != 0 && windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lp))) == "ImmersiveColorSet" {
+			// Windows switched between light and dark
+			if a.cfg.Theme == "" {
+				a.themeChanged()
+			}
+			return 0
+		}
 		a.mons = Monitors()
 		a.eng.Relayout()
 		// Explorer re-lays out the desktop after a display change; give it a moment.

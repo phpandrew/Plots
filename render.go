@@ -553,9 +553,9 @@ var _ = draw.Over
 
 // RenderToggleRow draws a white row with a Windows 11 style toggle switch
 // right-aligned (the label is drawn by GDI on top).
-func RenderToggleRow(w, h int, s float64, on, enabled bool) *image.RGBA {
+func RenderToggleRow(w, h int, s float64, on, enabled, dark bool, bg color.NRGBA) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
+	draw.Draw(img, img.Bounds(), image.NewUniform(bg), image.Point{}, draw.Src)
 	tw, th := float32(40*s), float32(20*s)
 	x1 := float32(w) - float32(4*s)
 	x0 := x1 - tw
@@ -564,14 +564,21 @@ func RenderToggleRow(w, h int, s float64, on, enabled bool) *image.RGBA {
 	rr := th / 2
 	accent := color.NRGBA{0, 103, 192, 255}
 	grey := color.NRGBA{120, 120, 120, 255}
+	knob := color.NRGBA{255, 255, 255, 255}
+	if dark {
+		accent, grey, knob = color.NRGBA{76, 194, 255, 255}, color.NRGBA{200, 200, 200, 255}, color.NRGBA{0, 0, 0, 255}
+	}
 	if !enabled {
 		accent = color.NRGBA{170, 190, 215, 255}
 		grey = color.NRGBA{190, 190, 190, 255}
+		if dark {
+			accent, grey = color.NRGBA{70, 90, 110, 255}, color.NRGBA{100, 100, 100, 255}
+		}
 	}
 	kr := float32(6 * s)
 	if on {
 		fill(img, accent, func(z *vector.Rasterizer) { roundRectPath(z, x0, y0, x1, y1, rr, rr, false) })
-		circle(img, x1-rr, y0+rr, kr+float32(0.5*s), color.NRGBA{255, 255, 255, 255})
+		circle(img, x1-rr, y0+rr, kr+float32(0.5*s), knob)
 	} else {
 		bw := float32(math.Max(1, math.Round(s)))
 		fill(img, grey, func(z *vector.Rasterizer) {

@@ -75,7 +75,7 @@ type Settings struct {
 	inboxCombo, dl, dlLabel, direct, grow, snap, dbl, startup, flags HWND
 	peek, peekKey, peekWin, pollBar, pollLabel, status               HWND
 	langCombo                                                        HWND
-	titleModeCombo, plotTitleCombo, plotTitleSw                      HWND
+	titleModeCombo, plotTitleCombo, plotTitleSw, themeCombo          HWND
 	comboIDs                                                         []string
 
 	// backup page
@@ -159,6 +159,7 @@ const (
 	idPlotTitleMode
 	idPlotTitleSw
 	idPlotTitleChoose
+	idTheme
 )
 
 var (
@@ -257,7 +258,9 @@ func (a *App) showSettings(plotID string) {
 	s.iconFont = makeFont(dpi, 12, 400, iconFace())
 	s.bgBrush = call(pCreateSolidBrush, uintptr(clrBg))
 	s.cardBrush = call(pCreateSolidBrush, uintptr(clrWhite))
+	themeWindow(s.hwnd)
 	s.pane = createWindow(WS_EX_CONTROLPARENT, "PlotsSettingsPane", "", WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_CLIPCHILDREN, sc(sbW), 0, cw-sc(sbW), ch, s.hwnd, 0)
+	themeControl(s.pane, "") // dark scroll bar
 	s.build()
 	s.refreshList()
 	s.refreshGeneral()
@@ -281,6 +284,7 @@ func (a *App) showSettings(plotID string) {
 func (s *Settings) ctl(ex uintptr, class, text string, style uintptr, x, y, w, h int, id int) HWND {
 	c := createWindow(ex, class, text, WS_CHILD|WS_VISIBLE|style, s.sc(x), s.sc(y), s.sc(w), s.sc(h), s.hwnd, uintptr(id))
 	sendMessage(c, WM_SETFONT, s.font, 1)
+	themeChild(c, class, style)
 	return c
 }
 
@@ -304,6 +308,7 @@ func (l *layout) add(ex uintptr, class, text string, style uintptr, x, y, w, h, 
 	s := l.s
 	c := createWindow(ex, class, text, WS_CHILD|style, s.sc(x), s.sc(y), s.sc(w), s.sc(h), s.pane, uintptr(id))
 	sendMessage(c, WM_SETFONT, s.font, 1)
+	themeChild(c, class, style)
 	s.base[c] = Point{s.sc(x), s.sc(y)}
 	l.pg.ctls = append(l.pg.ctls, c)
 	if l.card.Contains(Point{x + 1, y + 1}) {
@@ -663,6 +668,7 @@ func (s *Settings) buildGeneralPage() {
 	s.peek = l.toggle(cy, idPeek)
 	cy, _ = l.row(T("Keys"), T("Click the box and press the shortcut you want."), 220)
 	s.peekKey = l.add(WS_EX_CLIENTEDGE, "msctls_hotkey32", "", WS_TABSTOP, ctlR-220, cy-14, 220, 28, idPeekKey)
+	darkHotkey(s.peekKey, s)
 	sendMessage(s.peekKey, 0x403 /*HKM_SETRULES*/, 0x1|0x2 /*HKCOMB_NONE|HKCOMB_S*/, 0x2|0x4 /*CONTROL|ALT*/)
 	cy, _ = l.row(T("Include the Windows key"), "", 56)
 	s.peekWin = l.toggle(cy, idPeekWin)
@@ -673,6 +679,8 @@ func (s *Settings) buildGeneralPage() {
 	for _, lg := range Languages() {
 		sendMessage(s.langCombo, 0x143, 0, up(lg.Name))
 	}
+	cy, _ = l.row(T("Theme"), "", 280)
+	s.themeCombo = l.combo(cy, 280, idTheme, T("Same as Windows"), T("Light"), T("Dark"))
 	cy, _ = l.row(T("Start Plots with Windows"), "", 56)
 	s.startup = l.toggle(cy, idStartup)
 	cy, _ = l.row(T("Keep Auto-arrange and Align-to-grid off"), T("Recommended. Explorer would otherwise rearrange your icons."), 56)
@@ -946,7 +954,7 @@ func (s *Settings) drawToggle(di *DRAWITEMSTRUCT) {
 	w, h := int(r.Right-r.Left), int(r.Bottom-r.Top)
 	on := toggleState[di.HwndItem]
 	enabled := call(pIsWindowEnabled, di.HwndItem) != 0
-	blit(di.HDC, r, RenderToggleRow(w, h, s.scale, on, enabled))
+	blit(di.HDC, r, RenderToggleRow(w, h, s.scale, on, enabled, darkMode, bgr(clrWhite)))
 	if di.ItemState&0x10 != 0 { // ODS_FOCUS
 		fr := RECT{r.Left + 2, r.Top + 2, r.Right - 2, r.Bottom - 2}
 		call(pDrawFocusRect, di.HDC, uintptr(unsafe.Pointer(&fr)))
@@ -1269,6 +1277,7 @@ func (s *Settings) refreshGeneral() {
 		}
 	}
 	sendMessage(s.langCombo, 0x14E, uintptr(langSel), 0)
+	sendMessage(s.themeCombo, 0x14E, uintptr(map[string]int{"": 0, "light": 1, "dark": 2}[c.Theme]), 0)
 	sendMessage(s.pollBar, TBM_SETPOS, 1, uintptr(c.PollMs/100))
 	setWindowText(s.pollLabel, Tf("%.1f s", float64(c.PollMs)/1000))
 	sendMessage(s.inboxCombo, 0x14B /*CB_RESETCONTENT*/, 0, 0)
@@ -1485,9 +1494,12 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 		call(pSetBkColor, hdc, uintptr(clrBg))
 		return s.bgBrush
 	case 0x0134: // WM_CTLCOLORLISTBOX
-		if s.onCard[lp] {
+		call(pSetTextColor, wp, uintptr(clrText))
+		if lp != s.list && (s.onCard[lp] || darkMode) { // dark drop-down lists use the card colour
+			call(pSetBkColor, wp, uintptr(clrWhite))
 			return s.cardBrush
 		}
+		call(pSetBkColor, wp, uintptr(clrBg))
 		return s.bgBrush
 	case WM_ERASEBKGND:
 		return 1
@@ -1882,6 +1894,16 @@ func (s *Settings) command(id int, code uint32) {
 				setWindowText(s.status, a.peekErr)
 			}
 		}
+	case idTheme:
+		if code == 1 {
+			t := []string{"", "light", "dark"}[max(0, min(2, int(sendMessage(s.themeCombo, 0x147, 0, 0))))]
+			if t != a.cfg.Theme {
+				a.cfg.Theme = t
+				a.markDirty()
+				a.save(true)
+				a.themeChanged()
+			}
+		}
 	case idLanguage:
 		if code == 1 {
 			i := int(sendMessage(s.langCombo, 0x147, 0, 0))
@@ -2118,4 +2140,19 @@ func (s *Settings) loadRule() {
 			}
 		}
 	}
+}
+
+// themeChild applies the dark or light theme to standard controls (owner-drawn
+// buttons, statics and sliders are painted by Plots itself).
+func themeChild(h HWND, class string, style uintptr) {
+	switch class {
+	case "BUTTON":
+		if style&0xF == 0xB { // BS_OWNERDRAW
+			return
+		}
+	case "COMBOBOX", "EDIT", "LISTBOX":
+	default:
+		return
+	}
+	themeControl(h, class)
 }

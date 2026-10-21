@@ -387,7 +387,9 @@ func (a *App) showToolbar() {
 		}
 		b := createWindow(0, "BUTTON", lbl, style, ox+gap+i*(bw+gap), gap, bw, bh, a.toolbar, uintptr(tbNew+i))
 		sendMessage(b, WM_SETFONT, font, 1)
+		themeControl(b, "BUTTON")
 	}
+	themeWindow(a.toolbar)
 }
 
 func (a *App) toolbarWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
