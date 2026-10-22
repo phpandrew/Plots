@@ -134,6 +134,7 @@
   "Light": "Светлая",
   "Like *.pdf;*.docx. Use \"folder\" for folders.": "Например, *.pdf;*.docx. Для папок укажите «folder».",
   "Live folder": "Живая папка",
+  "Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):": "Живые папки в этом файле (Plots показывает эти папки, а файлы, перетащенные на эти участки, перемещаются в них):",
   "Lock plot": "Закрепить участок",
   "Locked": "Закреплен",
   "Log files": "Файлы журналов",
@@ -155,6 +156,7 @@
   "New plot": "Новый участок",
   "No header band": "Без полосы заголовка",
   "None": "Нет",
+  "Not imported as live folders (network or unusual paths; you can add them again in Settings):": "Не импортированы как живые папки (сетевые или необычные пути; их можно снова добавить в настройках):",
   "Off": "Выкл.",
   "Off: each plot uses its own colour and opacity.": "Выкл.: у каждого участка свои цвет и непрозрачность.",
   "Off: leave them where Windows puts them": "Выкл.: оставлять там, куда их сохраняет Windows",
@@ -235,6 +237,7 @@
   "Title text": "Текст заголовка",
   "Troubleshooting": "Устранение неполадок",
   "Type": "Тип",
+  "Update not installed: %s.": "Обновление не установлено: %s.",
   "Updates": "Обновления",
   "Used when the header band is set to a custom colour.": "Используется, если для полосы заголовка выбран свой цвет.",
   "Version %s": "Версия %s",
@@ -253,5 +256,10 @@
   "no backup folder chosen": "папка резервных копий не выбрана",
   "no releases published yet": "выпусков пока нет",
   "shortly": "скоро",
-  "this isn't a Plots layout file": "это не файл макета Plots"
+  "the update (%s) isn't newer than this version": "обновление (%s) не новее текущей версии",
+  "the update isn't signed by Plots, so it wasn't installed": "обновление не подписано Plots, поэтому оно не установлено",
+  "this build can't check updates; download the new version from GitHub": "эта сборка не может проверять обновления; скачайте новую версию с GitHub",
+  "this isn't a Plots layout file": "это не файл макета Plots",
+  "this release isn't signed, so Plots won't install it; download it from GitHub instead": "этот выпуск не подписан, поэтому Plots не будет его устанавливать; скачайте его с GitHub",
+  "…and %d more": "…и ещё %d"
 }

@@ -93,6 +93,10 @@ func ApplyImport(cur, imp *Config) {
 	cur.BackupEvery, cur.BackupDir, cur.BackupKeep, cur.LastBackup = keep.BackupEvery, keep.BackupDir, keep.BackupKeep, keep.LastBackup
 	cur.LastUpdateCheck = keep.LastUpdateCheck
 	cur.PanelMode = keep.PanelMode
+	// where downloads come from and whether Plots starts with Windows belong
+	// to this PC, and an imported file shouldn't be able to point the
+	// downloads mover at some other folder
+	cur.MoveDownloads, cur.DownloadsDir, cur.StartWithWindows = keep.MoveDownloads, keep.DownloadsDir, keep.StartWithWindows
 	cur.Hidden = false
 	if cur.Plot(cur.InboxPlot) == nil {
 		cur.InboxPlot = ""
@@ -100,6 +104,44 @@ func ApplyImport(cur, imp *Config) {
 	if cur.BackupKeep <= 0 {
 		cur.BackupKeep = 10
 	}
+}
+
+// LocalFolder reports whether path is a plain folder on a local drive, like
+// C:\Users\Me\Projects. Network (\\server\share), device (\\?\, \\.\) and
+// relative paths aren't: opening a network folder from someone else's layout
+// file would connect to their server and send it your Windows sign-in.
+func LocalFolder(path string) bool {
+	if len(path) < 3 || path[1] != ':' || (path[2] != '\\' && path[2] != '/') {
+		return false
+	}
+	if c := path[0] | 0x20; c < 'a' || c > 'z' {
+		return false
+	}
+	for _, part := range strings.FieldsFunc(path[3:], func(r rune) bool { return r == '\\' || r == '/' }) {
+		if part == ".." {
+			return false
+		}
+	}
+	return !strings.ContainsAny(path[2:], "\x00*?\"<>|:") // a second ':' is an alternate data stream
+}
+
+// ImportFolders checks the live folders in an imported layout. Plots that
+// point at anything but a local folder become ordinary plots; remote, if
+// set, also catches drive letters mapped to network shares. It returns the
+// live folders kept and the ones dropped.
+func ImportFolders(cfg *Config, remote func(string) bool) (kept, dropped []string) {
+	for _, p := range cfg.Plots {
+		if p.Folder == "" {
+			continue
+		}
+		if LocalFolder(p.Folder) && (remote == nil || !remote(p.Folder)) {
+			kept = append(kept, p.Folder)
+		} else {
+			dropped = append(dropped, p.Folder)
+			p.Folder = ""
+		}
+	}
+	return
 }
 
 // ------------------------------------------------------------------ scheduled backups

@@ -134,6 +134,7 @@
   "Light": "Claro",
   "Like *.pdf;*.docx. Use \"folder\" for folders.": "Como *.pdf;*.docx. Use \"folder\" para pastas.",
   "Live folder": "Pasta dinâmica",
+  "Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):": "Pastas dinâmicas neste arquivo (o Plots mostra essas pastas, e arquivos soltos nessas parcelas são movidos para elas):",
   "Lock plot": "Bloquear lote",
   "Locked": "Bloqueado",
   "Log files": "Arquivos de log",
@@ -155,6 +156,7 @@
   "New plot": "Novo lote",
   "No header band": "Sem faixa de cabeçalho",
   "None": "Nenhum",
+  "Not imported as live folders (network or unusual paths; you can add them again in Settings):": "Não importadas como pastas dinâmicas (caminhos de rede ou incomuns; você pode adicioná-las de novo nas Configurações):",
   "Off": "Desativado",
   "Off: each plot uses its own colour and opacity.": "Desativado: cada lote usa a própria cor e opacidade.",
   "Off: leave them where Windows puts them": "Desativado: deixar onde o Windows os coloca",
@@ -235,6 +237,7 @@
   "Title text": "Texto do título",
   "Troubleshooting": "Solução de problemas",
   "Type": "Tipo",
+  "Update not installed: %s.": "Atualização não instalada: %s.",
   "Updates": "Atualizações",
   "Used when the header band is set to a custom colour.": "Usada quando a faixa do cabeçalho tem uma cor personalizada.",
   "Version %s": "Versão %s",
@@ -253,5 +256,10 @@
   "no backup folder chosen": "nenhuma pasta de backup escolhida",
   "no releases published yet": "nenhuma versão publicada ainda",
   "shortly": "em breve",
-  "this isn't a Plots layout file": "este não é um arquivo de layout do Plots"
+  "the update (%s) isn't newer than this version": "a atualização (%s) não é mais nova que esta versão",
+  "the update isn't signed by Plots, so it wasn't installed": "a atualização não está assinada pelo Plots, então não foi instalada",
+  "this build can't check updates; download the new version from GitHub": "esta versão não consegue verificar atualizações; baixe a nova versão no GitHub",
+  "this isn't a Plots layout file": "este não é um arquivo de layout do Plots",
+  "this release isn't signed, so Plots won't install it; download it from GitHub instead": "esta versão publicada não está assinada, então o Plots não vai instalá-la; baixe-a no GitHub",
+  "…and %d more": "…e mais %d"
 }

@@ -25,7 +25,9 @@ var (
 
 func init() {
 	// undocumented but stable uxtheme exports (by ordinal) used for dark menus and controls
-	if h, err := windows.LoadLibrary("uxtheme.dll"); err == nil {
+	// System32 only: a plain LoadLibrary would look next to Plots.exe first,
+	// so a stray uxtheme.dll in (say) Downloads could be loaded instead.
+	if h, err := windows.LoadLibraryEx("uxtheme.dll", 0, windows.LOAD_LIBRARY_SEARCH_SYSTEM32); err == nil {
 		uxAllowDarkModeForWindow, _ = windows.GetProcAddressByOrdinal(h, 133)
 		uxSetPreferredAppMode, _ = windows.GetProcAddressByOrdinal(h, 135)
 		uxFlushMenuThemes, _ = windows.GetProcAddressByOrdinal(h, 136)

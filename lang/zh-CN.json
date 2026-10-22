@@ -134,6 +134,7 @@
   "Light": "浅色",
   "Like *.pdf;*.docx. Use \"folder\" for folders.": "例如 *.pdf;*.docx。文件夹请使用“folder”。",
   "Live folder": "实时文件夹",
+  "Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):": "此文件中的实时文件夹（Plots 会显示这些文件夹，拖放到这些分区上的文件会被移入其中）：",
   "Lock plot": "锁定分区",
   "Locked": "已锁定",
   "Log files": "日志文件",
@@ -155,6 +156,7 @@
   "New plot": "新建分区",
   "No header band": "无标题栏底色",
   "None": "无",
+  "Not imported as live folders (network or unusual paths; you can add them again in Settings):": "未作为实时文件夹导入（网络路径或异常路径；可在设置中重新添加）：",
   "Off": "关",
   "Off: each plot uses its own colour and opacity.": "关闭时：每个分区使用各自的颜色和不透明度。",
   "Off: leave them where Windows puts them": "关闭时：保留在 Windows 放置的位置",
@@ -235,6 +237,7 @@
   "Title text": "标题文字",
   "Troubleshooting": "疑难解答",
   "Type": "类型",
+  "Update not installed: %s.": "未安装更新：%s。",
   "Updates": "更新",
   "Used when the header band is set to a custom colour.": "当标题栏底色设为自定义颜色时使用。",
   "Version %s": "版本 %s",
@@ -253,5 +256,10 @@
   "no backup folder chosen": "未选择备份文件夹",
   "no releases published yet": "尚未发布任何版本",
   "shortly": "即将进行",
-  "this isn't a Plots layout file": "这不是 Plots 布局文件"
+  "the update (%s) isn't newer than this version": "该更新（%s）并不比当前版本新",
+  "the update isn't signed by Plots, so it wasn't installed": "该更新没有 Plots 的签名，因此未安装",
+  "this build can't check updates; download the new version from GitHub": "此版本无法验证更新；请从 GitHub 下载新版本",
+  "this isn't a Plots layout file": "这不是 Plots 布局文件",
+  "this release isn't signed, so Plots won't install it; download it from GitHub instead": "此发布版本未签名，Plots 不会安装它；请改从 GitHub 下载",
+  "…and %d more": "……以及另外 %d 个"
 }

@@ -99,7 +99,7 @@ func (a *App) installUpdate() {
 	updBusy, updInstall = true, true
 	updMu.Unlock()
 	go func() {
-		err := downloadUpdate(r.AssetURL())
+		err := downloadUpdate(r)
 		updMu.Lock()
 		updErr, updBusy = err, false
 		updMu.Unlock()

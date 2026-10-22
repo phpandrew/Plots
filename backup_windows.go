@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unicode/utf16"
 	"unsafe"
@@ -124,8 +125,15 @@ func (a *App) importFrom(owner HWND, path string) {
 		messageBox(owner, Tf("Couldn't import %s: %s.", filepath.Base(path), err.Error()), "Plots", MB_OK|MB_ICONWARNING)
 		return
 	}
+	kept, dropped := ImportFolders(imp, onNetworkDrive)
 	msg := Tf("Replace your current %d plot(s) and settings with the %d plot(s) in \"%s\"?\n\nA backup of your current layout is saved first, so you can undo this by importing it.",
 		len(a.cfg.Plots), len(imp.Plots), filepath.Base(path))
+	if len(kept) > 0 {
+		msg += "\n\n" + T("Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):") + "\n" + listPaths(kept)
+	}
+	if len(dropped) > 0 {
+		msg += "\n\n" + T("Not imported as live folders (network or unusual paths; you can add them again in Settings):") + "\n" + listPaths(dropped)
+	}
 	if messageBox(owner, msg, "Plots", MB_YESNO|MB_ICONWARNING) != IDYES {
 		return
 	}
@@ -148,6 +156,24 @@ func (a *App) importFrom(owner HWND, path string) {
 		a.settings.reloadAll()
 	}
 	log.Printf("imported %d plots from %s", len(a.cfg.Plots), path)
+}
+
+// onNetworkDrive reports whether path is on a drive letter mapped to a network share.
+func onNetworkDrive(path string) bool {
+	return len(path) >= 3 && windows.GetDriveType(u16(path[:3])) == windows.DRIVE_REMOTE
+}
+
+// listPaths is a bulleted list of paths for a message box, at most 8.
+func listPaths(paths []string) string {
+	var b strings.Builder
+	for i, p := range paths {
+		if i == 8 {
+			b.WriteString(Tf("…and %d more", len(paths)-8) + "\n")
+			break
+		}
+		b.WriteString("• " + p + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // backupNow writes a backup immediately (the "Back up now" button).

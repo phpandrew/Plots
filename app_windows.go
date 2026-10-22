@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"log"
@@ -784,17 +785,38 @@ func dumpTree(label string, parent HWND) {
 	log.Printf("  virtual screen=%v progman client origin=%v", vs, clientToScreen(parent, Point{}))
 }
 
-// checkUpdate swaps in Plots-update.exe placed next to Plots.exe and restarts.
+// checkUpdate swaps in Plots-update.exe placed next to Plots.exe and restarts,
+// if Plots-update.exe.sig beside it shows it's a newer, genuine Plots build.
 func (a *App) checkUpdate() {
 	exe, err := os.Executable()
 	if err != nil {
 		return
 	}
 	dir := filepath.Dir(exe)
-	upd := filepath.Join(dir, "Plots-update.exe")
+	upd := filepath.Join(dir, updateName)
 	if _, err := os.Stat(upd); err != nil {
 		return
 	}
+	sigPath := filepath.Join(dir, updateSigName)
+	sig, err := os.ReadFile(sigPath)
+	if err != nil {
+		err = errors.New(T("the update isn't signed by Plots, so it wasn't installed"))
+	} else {
+		var v string
+		if v, err = checkUpdateFile(upd, sig); err == nil {
+			log.Println("update: verified", v)
+		}
+	}
+	if err != nil {
+		// set it aside so it isn't checked again every few seconds
+		log.Println("update: refused:", err)
+		os.Remove(upd + ".rejected")
+		os.Rename(upd, upd+".rejected")
+		os.Remove(sigPath)
+		a.setUpdateStatus(Tf("Update not installed: %s.", err.Error()), false)
+		return
+	}
+	os.Remove(sigPath)
 	old := filepath.Join(dir, "Plots.old.exe")
 	os.Remove(old)
 	if err := os.Rename(exe, old); err != nil {

@@ -11,6 +11,6 @@ dist/
 .idea/
 Thumbs.db
 desktop.ini
-*.exe
-Plots.exe
-Plots.old.exe
+Plots-update.exe.sig
+*.rejected
+*.part

@@ -48,7 +48,7 @@ A lightweight Stardock Fences–style organizer. Single `Plots.exe`, no installe
 - **Double-click to hide** (optional): hide or show all icons and plots by double-clicking empty desktop.
 - **Right-click menus** on plot title bars, and a tray icon for quick access.
 - **Starts fast** with Windows, and the desktop check interval is adjustable from 0.1 to 0.5 s.
-- **Updates itself:** checks GitHub Releases from the About page or automatically, then updates in place.
+- **Updates itself:** checks GitHub Releases from the About page or automatically, then updates in place. Every update is signed, and Plots refuses one that isn't.
 - **8 languages:** English, Français, Español, Português (Brasil), Deutsch, 中文（简体）, 日本語 and Русский. Plots follows your Windows language, or pick one under **General › Language**.
 - **Lock a plot** so it can't be moved, resized, merged or split by accident (right-click its title bar, or in Settings).
 - **Small and portable:** one `Plots.exe`, no installer, no runtime. Every release is security-scanned before it's published.
@@ -104,7 +104,7 @@ Turn off **Start with Windows** in Settings › General, choose **Exit Plots** f
 ## Building
 **Version:** the `VERSION` file holds the version (e.g. `0.2.2`). Bump it when you want a new number. If you push without bumping, CI uses the next free patch number (`0.2.3`, …), so builds never collide.
 
-**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and, once the security scans pass, publishes a GitHub Release `v<VERSION>`, marked **Latest**, with `Plots.exe` and `Plots-update.exe` attached. Drop `Plots-update.exe` next to a running Plots and it updates itself; Plots also checks Releases on its own. Pull requests only build and test.
+**GitHub Actions** (`.github/workflows/build.yml`) builds Plots on every push to `main` and, once the security scans pass, publishes a GitHub Release `v<VERSION>`, marked **Latest**, with `Plots.exe`, `Plots-update.exe` and its signature `Plots-update.exe.sig` attached. Drop both update files next to a running Plots and it updates itself; Plots also checks Releases on its own. Updates must be signed with the release key or Plots won't install them ([how](docs/UPDATE-SIGNING.md)). Pull requests only build and test.
 
 **Local build** (`build.bat` does this on Windows): it stamps `<VERSION>-dev`, so a later GitHub release of the same number counts as newer:
 ```
@@ -121,6 +121,8 @@ Platform-independent logic (`engine.go`, `render.go`, `config.go`, `wallpaper.go
 ## Security
 Every push to `main` is scanned with **govulncheck** and **CodeQL** before it's released. A finding holds the release back and opens a `security` issue, which closes itself once a scan is clean. The scans also run daily and on pull requests. Details: [docs/SECURITY-FLOW.md](docs/SECURITY-FLOW.md). To report a vulnerability, see [SECURITY.md](.github/SECURITY.md).
 - **Dependabot** (`.github/dependabot.yml`) opens grouped pull requests every Monday for Go modules and GitHub Actions.
+- **Signed updates:** each release's update is signed with an Ed25519 key held only as a GitHub secret. Plots checks the signature, the file's SHA-256 and that the version is newer before installing, so a tampered download, a file dropped next to `Plots.exe` or an old release can't be installed. Release notes list the SHA-256 of `Plots.exe`. Details: [docs/UPDATE-SIGNING.md](docs/UPDATE-SIGNING.md).
+- **Imported layouts** can't point the downloads mover at another folder or open network folders; Plots lists a file's live folders before you import it.
 - Builds always use the newest Go 1.26 patch release, so standard-library security fixes are picked up automatically.
 
 ## Privacy
@@ -156,4 +158,5 @@ Plots sends nothing about you or your PC anywhere. Its only network use is check
 | `peek_windows.go`, `peekview_windows.go` | The Peek shortcut and the plots it shows above your windows |
 | `iconfade_windows.go` | Fades the desktop icons with the plots |
 | `i18n.go`, `i18n_windows.go`, `lang/*.json` | Translations: `T("English text")` looks the text up in the current language |
+| `update.go`, `updatekey.go`, `internal/updatesig/`, `tools/sign/` | Signed updates: checking them in Plots, and making the key and signatures |
 | `snapshot_windows.go` | Saves PNGs of the settings pages (create `snap.request` next to `config.json`; add `lang=fr` for another language) for docs |

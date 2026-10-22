@@ -164,6 +164,14 @@ const taskXML = `<?xml version="1.0" encoding="UTF-16"?>
   <Actions Context="Author"><Exec><Command>%s</Command></Exec></Actions>
 </Task>`
 
+// schtasks is the full System32 path, so a schtasks.exe earlier on PATH is never run.
+func schtasks() string {
+	if dir, err := windows.GetSystemDirectory(); err == nil && dir != "" {
+		return filepath.Join(dir, "schtasks.exe")
+	}
+	return "schtasks"
+}
+
 func runHidden(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000 /*CREATE_NO_WINDOW*/}
@@ -187,7 +195,7 @@ func (a *App) applyAutostart() {
 		k.Close()
 	}
 	if !a.cfg.StartWithWindows {
-		runHidden("schtasks", "/Delete", "/TN", "Plots", "/F")
+		runHidden(schtasks(), "/Delete", "/TN", "Plots", "/F")
 		return
 	}
 	exe, _ := os.Executable()
@@ -205,7 +213,7 @@ func (a *App) applyAutostart() {
 		return
 	}
 	defer os.Remove(tmp)
-	if runHidden("schtasks", "/Create", "/TN", "Plots", "/XML", tmp, "/F") != nil {
+	if runHidden(schtasks(), "/Create", "/TN", "Plots", "/XML", tmp, "/F") != nil {
 		// fall back to the Run key if Task Scheduler refuses
 		if k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.SET_VALUE); err == nil {
 			k.SetStringValue("Plots", `"`+exe+`"`)

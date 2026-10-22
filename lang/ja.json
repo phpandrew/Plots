@@ -134,6 +134,7 @@
   "Light": "ライト",
   "Like *.pdf;*.docx. Use \"folder\" for folders.": "例: *.pdf;*.docx。フォルダーには「folder」を使用します。",
   "Live folder": "ライブ フォルダー",
+  "Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):": "このファイル内のライブ フォルダー (Plots はこれらのフォルダーを表示し、これらの区画にドロップしたファイルはそこへ移動します):",
   "Lock plot": "区画をロック",
   "Locked": "ロック中",
   "Log files": "ログ ファイル",
@@ -155,6 +156,7 @@
   "New plot": "新しい区画",
   "No header band": "ヘッダー バンドなし",
   "None": "なし",
+  "Not imported as live folders (network or unusual paths; you can add them again in Settings):": "ライブ フォルダーとしてインポートされなかったもの (ネットワークまたは通常と異なるパス。設定から再度追加できます):",
   "Off": "オフ",
   "Off: each plot uses its own colour and opacity.": "オフ: 各区画で個別の色と不透明度を使用します。",
   "Off: leave them where Windows puts them": "オフ: Windows が配置した場所のままにします",
@@ -235,6 +237,7 @@
   "Title text": "タイトルの文字",
   "Troubleshooting": "トラブルシューティング",
   "Type": "種類",
+  "Update not installed: %s.": "更新はインストールされませんでした: %s。",
   "Updates": "更新",
   "Used when the header band is set to a custom colour.": "ヘッダー バンドがカスタム色に設定されているときに使用されます。",
   "Version %s": "バージョン %s",
@@ -253,5 +256,10 @@
   "no backup folder chosen": "バックアップ フォルダーが選択されていません",
   "no releases published yet": "まだリリースが公開されていません",
   "shortly": "まもなく",
-  "this isn't a Plots layout file": "Plots のレイアウト ファイルではありません"
+  "the update (%s) isn't newer than this version": "この更新 (%s) は現在のバージョンより新しくありません",
+  "the update isn't signed by Plots, so it wasn't installed": "この更新には Plots の署名がないため、インストールされませんでした",
+  "this build can't check updates; download the new version from GitHub": "このビルドは更新を検証できません。GitHub から新しいバージョンをダウンロードしてください",
+  "this isn't a Plots layout file": "Plots のレイアウト ファイルではありません",
+  "this release isn't signed, so Plots won't install it; download it from GitHub instead": "このリリースには署名がないため、Plots はインストールしません。GitHub からダウンロードしてください",
+  "…and %d more": "…ほか %d 件"
 }

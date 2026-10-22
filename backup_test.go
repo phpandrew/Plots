@@ -89,3 +89,32 @@ func TestWriteAndPruneBackups(t *testing.T) {
 		t.Fatal("pruned a file that isn't a backup")
 	}
 }
+
+func TestImportFolders(t *testing.T) {
+	ok := []string{`C:\Users\Me\Projects`, `d:/photos`, `E:\`}
+	bad := []string{`\\server\share`, `\\?\C:\x`, `\\.\pipe\x`, `Projects`, `C:Projects`, `C:\a\..\..\Windows`, `C:\x\file:stream`, `C:\x?`, `1:\x`, ``}
+	for _, p := range ok {
+		if !LocalFolder(p) {
+			t.Errorf("LocalFolder(%q) = false", p)
+		}
+	}
+	for _, p := range bad {
+		if LocalFolder(p) {
+			t.Errorf("LocalFolder(%q) = true", p)
+		}
+	}
+	cfg := &Config{Plots: []*Plot{{Folder: `C:\Work`}, {Folder: `\\evil\share`}, {}, {Folder: `Z:\Shared`}}}
+	kept, dropped := ImportFolders(cfg, func(p string) bool { return p[0] == 'Z' })
+	if len(kept) != 1 || len(dropped) != 2 || cfg.Plots[1].Folder != "" || cfg.Plots[3].Folder != "" || cfg.Plots[0].Folder != `C:\Work` {
+		t.Errorf("kept %v dropped %v", kept, dropped)
+	}
+}
+
+func TestImportKeepsLocalSettings(t *testing.T) {
+	cur := &Config{MoveDownloads: true, DownloadsDir: `C:\Users\Me\Downloads`, StartWithWindows: true}
+	imp := &Config{MoveDownloads: true, DownloadsDir: `C:\Users\Me\Documents`}
+	ApplyImport(cur, imp)
+	if cur.DownloadsDir != `C:\Users\Me\Downloads` || !cur.StartWithWindows {
+		t.Errorf("import changed this PC's settings: %+v", cur)
+	}
+}

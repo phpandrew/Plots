@@ -25,7 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
-      artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v7
 
@@ -80,7 +79,6 @@ jobs:
             -o dist/Plots.exe .
 
       - name: Upload build
-        id: upload
         uses: actions/upload-artifact@v7
         with:
           name: Plots-v${{ steps.ver.outputs.version }}
@@ -103,21 +101,46 @@ jobs:
     permissions:
       contents: write # create the tag and release
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache: true
+
       - uses: actions/download-artifact@v8
         with:
           name: Plots-v${{ needs.build.outputs.version }}
           path: dist
+
+      - name: Sign the update
+        # Plots only installs updates signed with this key (docs/UPDATE-SIGNING.md).
+        # The tool also checks the key matches updatekey.go, so a release can
+        # never ship that the built-in updater would refuse.
+        env:
+          PLOTS_SIGNING_KEY: ${{ secrets.PLOTS_SIGNING_KEY }}
+          V: ${{ needs.build.outputs.version }}
+        run: |
+          if [ -z "$PLOTS_SIGNING_KEY" ]; then
+            echo "::error::The PLOTS_SIGNING_KEY secret isn't set. See docs/UPDATE-SIGNING.md."
+            exit 1
+          fi
+          cp dist/Plots.exe dist/Plots-update.exe
+          go run ./tools/sign sign "$V" dist/Plots-update.exe
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ needs.build.outputs.version }}
         run: |
-          cp dist/Plots.exe dist/Plots-update.exe
-          gh release create "v$V" dist/Plots.exe dist/Plots-update.exe \
+          sum=$(sha256sum dist/Plots.exe | cut -d' ' -f1)
+          gh release create "v$V" dist/Plots.exe dist/Plots-update.exe dist/Plots-update.exe.sig \
             --repo "$GITHUB_REPOSITORY" \
             --title "Plots v$V" \
             --target "$GITHUB_SHA" \
-            --notes "Download \`Plots.exe\` and run it. Windows may warn that it's from an unknown publisher: click **More info › Run anyway**. [Privacy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/PRIVACY.md)" \
+            --notes "Download \`Plots.exe\` and run it. Windows may warn that it's from an unknown publisher: click **More info › Run anyway**. [Privacy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/PRIVACY.md)
+
+SHA-256 of \`Plots.exe\`: \`$sum\`" \
             --generate-notes \
             --latest

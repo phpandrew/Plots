@@ -134,6 +134,7 @@
   "Light": "Hell",
   "Like *.pdf;*.docx. Use \"folder\" for folders.": "Z. B. *.pdf;*.docx. Verwenden Sie „folder“ für Ordner.",
   "Live folder": "Live-Ordner",
+  "Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):": "Live-Ordner in dieser Datei (Plots zeigt diese Ordner an, und auf diese Bereiche gezogene Dateien werden dorthin verschoben):",
   "Lock plot": "Bereich sperren",
   "Locked": "Gesperrt",
   "Log files": "Protokolldateien",
@@ -155,6 +156,7 @@
   "New plot": "Neuer Bereich",
   "No header band": "Keine Kopfleiste",
   "None": "Keine",
+  "Not imported as live folders (network or unusual paths; you can add them again in Settings):": "Nicht als Live-Ordner importiert (Netzwerk- oder ungewöhnliche Pfade; du kannst sie in den Einstellungen wieder hinzufügen):",
   "Off": "Aus",
   "Off: each plot uses its own colour and opacity.": "Aus: Jeder Bereich hat eigene Farbe und Deckkraft.",
   "Off: leave them where Windows puts them": "Aus: Windows platziert sie",
@@ -235,6 +237,7 @@
   "Title text": "Titeltext",
   "Troubleshooting": "Problembehandlung",
   "Type": "Typ",
+  "Update not installed: %s.": "Update nicht installiert: %s.",
   "Updates": "Updates",
   "Used when the header band is set to a custom colour.": "Wird verwendet, wenn die Kopfleiste auf eine benutzerdefinierte Farbe eingestellt ist.",
   "Version %s": "Version %s",
@@ -253,5 +256,10 @@
   "no backup folder chosen": "kein Sicherungsordner ausgewählt",
   "no releases published yet": "noch keine Versionen veröffentlicht",
   "shortly": "in Kürze",
-  "this isn't a Plots layout file": "dies ist keine Plots-Layoutdatei"
+  "the update (%s) isn't newer than this version": "das Update (%s) ist nicht neuer als diese Version",
+  "the update isn't signed by Plots, so it wasn't installed": "das Update ist nicht von Plots signiert und wurde daher nicht installiert",
+  "this build can't check updates; download the new version from GitHub": "dieser Build kann Updates nicht prüfen; lade die neue Version von GitHub herunter",
+  "this isn't a Plots layout file": "dies ist keine Plots-Layoutdatei",
+  "this release isn't signed, so Plots won't install it; download it from GitHub instead": "diese Version ist nicht signiert, daher installiert Plots sie nicht; lade sie stattdessen von GitHub herunter",
+  "…and %d more": "…und %d weitere"
 }
