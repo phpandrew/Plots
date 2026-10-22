@@ -11,6 +11,7 @@ The only network connections Plots makes are to GitHub, to check for and downloa
 - **Start with Windows** (optional) adds a scheduled task named *Plots* that starts it when you sign in.
 - **Move finished downloads to the desktop** (optional) moves completed files from your Downloads folder.
 - Settings, backups and the log are kept in `%APPDATA%\Plots`.
+- An exported `.plots` file and the backups hold your layout, which includes the full paths of the files in your plots (so your Windows user name and your file names). Keep that in mind before sharing one.
 
 ## Uninstalling
 

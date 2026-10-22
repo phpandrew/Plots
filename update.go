@@ -56,7 +56,19 @@ func (r *Release) SigURL() string {
 
 const updateName, updateSigName = "Plots-update.exe", "Plots-update.exe.sig"
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+	// GitHub redirects downloads to its CDN; stay on HTTPS while following
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("too many redirects")
+		}
+		if req.URL.Scheme != "https" {
+			return errors.New("update redirected to an insecure address")
+		}
+		return nil
+	},
+}
 
 func latestRelease() (*Release, error) {
 	req, _ := http.NewRequest("GET", "https://api.github.com/repos/"+repoSlug+"/releases/latest", nil)

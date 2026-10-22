@@ -57,13 +57,14 @@ jobs:
           mm=${base%.*}; p=${base##*.}
           while git ls-remote --exit-code --tags origin "refs/tags/v$mm.$p" >/dev/null 2>&1; do p=$((p+1)); done
           v="$mm.$p"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then v="$v-pr.${{ github.run_number }}"; fi
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then v="$v-pr.$GITHUB_RUN_NUMBER"; fi
           if [ "$v" != "$base" ]; then echo "::notice::VERSION says $base but it is already released; building $v"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Stamp the version into the exe's file properties
+        env:
+          v: ${{ steps.ver.outputs.version }} # via env, never inlined into the shell
         run: |
-          v="${{ steps.ver.outputs.version }}"
           # Windows version resources need plain numbers: 0.3.1-pr.7 -> 0.3.1
           go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json \
             --product-version "${v%%-*}" --file-version "${v%%-*}"
@@ -73,9 +74,10 @@ jobs:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: "0"
+          v: ${{ steps.ver.outputs.version }}
         run: |
           go build -trimpath \
-            -ldflags "-s -w -H windowsgui -X main.version=${{ steps.ver.outputs.version }}" \
+            -ldflags "-s -w -H windowsgui -X main.version=$v" \
             -o dist/Plots.exe .
 
       - name: Upload build
