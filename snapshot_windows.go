@@ -60,7 +60,7 @@ func (a *App) checkSnapshotRequest() {
 		}
 	}
 	if len(pages) == 0 {
-		pages = []string{"plot", "look", "rules", "general", "backup", "about"}
+		pages = []string{"plot", "look", "seasons", "rules", "general", "backup", "about"}
 	}
 	if lang != "" {
 		// capture in another language, then put everything back

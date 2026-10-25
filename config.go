@@ -36,6 +36,9 @@ type Plot struct {
 	IconSize   int      `json:"iconSize,omitempty"`   // live folder icon size in px at 100% (0 = same as the desktop)
 	Locked     bool     `json:"locked,omitempty"`     // can't be moved, resized, merged or split
 	TitleColor string   `json:"titleColor,omitempty"` // "" = Appearance setting, "auto" = best contrast, or #RRGGBB
+	Background string   `json:"background,omitempty"` // image file shown behind the icons
+	BgFit      string   `json:"bgFit,omitempty"`      // BgFill (""), BgFit, BgStretch, BgTile
+	BgOpacity  int      `json:"bgOpacity,omitempty"`  // 10-100 (0 = 100)
 }
 
 type Config struct {
@@ -79,12 +82,16 @@ type Config struct {
 	PeekMods           int      `json:"peekMods"` // MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4, MOD_WIN 8
 	TintMode           int      `json:"tintMode"` // live-folder icon tint: TintOff, TintPlot, TintCustom
 	TintColor          string   `json:"tintColor"`
-	TintStrength       int      `json:"tintStrength"` // 0-100
-	FadeIdle           bool     `json:"fadeIdle"`     // plots rest faded and come into focus on hover
-	FadeLevel          int      `json:"fadeLevel"`    // resting strength, 10-90 %
-	FadeIcons          bool     `json:"fadeIcons"`    // fade the desktop icons too (all together)
-	Language           string   `json:"language"`     // UI language code, "" = follow Windows
-	Theme              string   `json:"theme"`        // "", "light" or "dark" ("" = follow Windows)
+	TintStrength       int      `json:"tintStrength"`    // 0-100
+	FadeIdle           bool     `json:"fadeIdle"`        // plots rest faded and come into focus on hover
+	FadeLevel          int      `json:"fadeLevel"`       // resting strength, 10-90 %
+	FadeIcons          bool     `json:"fadeIcons"`       // fade the desktop icons too (all together)
+	Language           string   `json:"language"`        // UI language code, "" = follow Windows
+	Theme              string   `json:"theme"`           // "", "light" or "dark" ("" = follow Windows)
+	Season             string   `json:"season"`          // seasonal theme: "" off, "auto", or a theme key to always use
+	SeasonsOff         []string `json:"seasonsOff"`      // themes Automatic skips
+	SeasonsInit        bool     `json:"seasonsInit"`     // SeasonsOff has been given its defaults
+	SeasonDecorOnly    bool     `json:"seasonDecorOnly"` // keep plot colours, only add decorations
 }
 
 const (

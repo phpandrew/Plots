@@ -103,9 +103,9 @@ func TestImportFolders(t *testing.T) {
 			t.Errorf("LocalFolder(%q) = true", p)
 		}
 	}
-	cfg := &Config{Plots: []*Plot{{Folder: `C:\Work`}, {Folder: `\\evil\share`}, {}, {Folder: `Z:\Shared`}}}
+	cfg := &Config{Plots: []*Plot{{Folder: `C:\Work`, Background: `C:\Pics\a.jpg`}, {Folder: `\\evil\share`}, {Background: `\\evil\x.png`}, {Folder: `Z:\Shared`}}}
 	kept, dropped := ImportFolders(cfg, func(p string) bool { return p[0] == 'Z' })
-	if len(kept) != 1 || len(dropped) != 2 || cfg.Plots[1].Folder != "" || cfg.Plots[3].Folder != "" || cfg.Plots[0].Folder != `C:\Work` {
+	if len(kept) != 1 || len(dropped) != 3 || cfg.Plots[2].Background != "" || cfg.Plots[0].Background == "" || cfg.Plots[1].Folder != "" || cfg.Plots[3].Folder != "" || cfg.Plots[0].Folder != `C:\Work` {
 		t.Errorf("kept %v dropped %v", kept, dropped)
 	}
 }

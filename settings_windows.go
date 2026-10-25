@@ -58,6 +58,11 @@ type Settings struct {
 	plotHeader, monLabel, title, swatch, chooseBtn, opacity, opLabel HWND
 	inbox, rollToggle, tabsEdit, folderEdit, folderClear, sortCombo  HWND
 	iconCombo, deleteBtn, lockToggle                                 HWND
+	bgEdit, bgClear, bgFitCombo, bgBar, bgLabel                      HWND
+
+	// seasonal themes page
+	seasonCombo, seasonStatus, seasonDecor HWND
+	seasonToggles, seasonDates             []HWND
 
 	// appearance page
 	fontCombo, sizeBar, sizeLabel, titleSw, headerCombo, headerSw HWND
@@ -160,7 +165,15 @@ const (
 	idPlotTitleSw
 	idPlotTitleChoose
 	idTheme
+	idSeasonsNav
+	idSeason
+	idSeasonDecor
+	idBgBrowse
+	idBgClear
+	idBgFit
 )
+
+const idSeasonBase = 1700 // one toggle per entry in Seasons
 
 var (
 	settingsProc, paneProc uintptr
@@ -478,7 +491,7 @@ func (s *Settings) build() {
 	nav := []struct {
 		id   int
 		text string
-	}{{idGeneral, T("General")}, {idAppearance, T("Appearance")}, {idRulesNav, T("Sorting rules")}, {idBackupNav, T("Backup & restore")}, {idAboutNav, T("About")}}
+	}{{idGeneral, T("General")}, {idAppearance, T("Appearance")}, {idSeasonsNav, T("Seasonal themes")}, {idRulesNav, T("Sorting rules")}, {idBackupNav, T("Backup & restore")}, {idAboutNav, T("About")}}
 	for i, n := range nav {
 		s.navBtns = append(s.navBtns, s.ctl(0, "BUTTON", n.text, WS_TABSTOP|0xB /*BS_OWNERDRAW*/, 8, 64+i*40, sbW-16, 38, n.id))
 	}
@@ -493,6 +506,7 @@ func (s *Settings) build() {
 
 	s.buildPlotPage()
 	s.buildLookPage()
+	s.buildSeasonsPage()
 	s.buildRulesPage()
 	s.buildGeneralPage()
 	s.buildBackupPage()
@@ -511,6 +525,18 @@ func (s *Settings) buildPlotPage() {
 	s.chooseBtn = l.pg.ctls[len(l.pg.ctls)-1]
 	cy, _ = l.row(T("Opacity"), "", 280)
 	s.opacity, s.opLabel = l.slider(cy, 0, 100, idOpacity)
+	cy, _ = l.row(T("Background image"), T("A picture behind this plot's icons. PNG, JPEG, GIF, BMP or WebP."), -1)
+	s.bgEdit = l.edit(cy, cardL+18, cardW-36-96-80-16, 0, 0x800 /*ES_READONLY*/)
+	l.button(T("Choose…"), cy, ctlR-96-80-8, 96, idBgBrowse)
+	s.bgClear = l.button(T("Clear"), cy, ctlR-80, 80, idBgClear)
+	cy, _ = l.row(T("Image layout"), "", 260)
+	var fits []string
+	for _, f := range BgFits {
+		fits = append(fits, T(f.Label))
+	}
+	s.bgFitCombo = l.combo(cy, 260, idBgFit, fits...)
+	cy, _ = l.row(T("Image opacity"), "", 280)
+	s.bgBar, s.bgLabel = l.slider(cy, 10, 100, 0)
 	cy, _ = l.row(T("Title text"), T("Automatic picks black or white, whichever is easier to read on this plot and your wallpaper."), 280)
 	s.plotTitleCombo = l.combo(cy, 280, idPlotTitleMode, T("Same as Appearance"), T("Automatic (best contrast)"), T("Custom colour"))
 	cy, _ = l.row(T("Custom title colour"), "", 156)
@@ -609,6 +635,90 @@ func (s *Settings) buildLookPage() {
 	cy, _ = l.row(T("Tint strength"), "", 280)
 	s.tintBar, s.tintLabel = l.slider(cy, 10, 100, 0)
 	l.done()
+}
+
+func (s *Settings) buildSeasonsPage() {
+	l := s.newPage("seasons")
+	l.title(T("Seasonal themes"), T("Dress your plots up for holidays and the seasons."))
+	cy, _ := l.row(T("Theme"), T("Automatic shows the holidays turned on below, each for a week or two before the day."), 300)
+	items := []string{T("Off"), T("Automatic")}
+	for _, se := range Seasons {
+		items = append(items, Tf("Always: %s", T(se.Name)))
+	}
+	s.seasonCombo = l.combo(cy, 300, idSeason, items...)
+	_, s.seasonStatus = l.row(T("Right now"), " ", 0)
+	cy, _ = l.row(T("Decorations only"), T("Keep your own plot colours and just add the holiday decorations."), 56)
+	s.seasonDecor = l.toggle(cy, idSeasonDecor)
+
+	l.section(T("Holidays and seasons for Automatic"))
+	s.seasonToggles, s.seasonDates = nil, nil
+	for i, se := range Seasons {
+		cy, d := l.row(T(se.Name), " ", 56)
+		s.seasonToggles = append(s.seasonToggles, l.toggle(cy, idSeasonBase+i))
+		s.seasonDates = append(s.seasonDates, d)
+	}
+	l.done()
+}
+
+func (s *Settings) refreshSeasons() {
+	if s == nil || !isWindow(s.hwnd) || s.seasonCombo == 0 {
+		return
+	}
+	s.loading = true
+	defer func() { s.loading = false }()
+	c := s.a.cfg
+	idx := 0
+	switch c.Season {
+	case "":
+	case "auto":
+		idx = 1
+	default:
+		for i, se := range Seasons {
+			if se.Key == c.Season {
+				idx = i + 2
+			}
+		}
+	}
+	sendMessage(s.seasonCombo, 0x14E, uintptr(idx), 0)
+	setCheck(s.seasonDecor, c.SeasonDecorOnly)
+	enable(c.Season != "", s.seasonDecor)
+	off := map[string]bool{}
+	for _, k := range c.SeasonsOff {
+		off[k] = true
+	}
+	for i, se := range Seasons {
+		setCheck(s.seasonToggles[i], !off[se.Key])
+		setWindowText(s.seasonDates[i], seasonRange(se))
+	}
+	now := time.Now()
+	st := ""
+	switch cur, until := ActiveSeason(c.Season, c.SeasonsOff, now); {
+	case c.Season == "":
+		st = T("Seasonal themes are off.")
+	case c.Season != "auto" && cur != nil:
+		st = Tf("Always showing %s.", T(cur.Name))
+	case cur != nil:
+		st = Tf("Showing %s until %s.", T(cur.Name), monthDay(until))
+	default:
+		if nx, at := NextSeason(c.SeasonsOff, now); nx != nil {
+			st = Tf("Nothing right now. Next: %s, from %s.", T(nx.Name), monthDay(at))
+		} else {
+			st = T("Turn on at least one holiday below.")
+		}
+	}
+	setWindowText(s.seasonStatus, st)
+}
+
+// seasonChanged redraws the plots after a seasonal-theme setting changes.
+func (s *Settings) seasonChanged() {
+	a := s.a
+	a.markDirty()
+	a.tick()
+	if a.peekOpen() {
+		a.refreshPeek()
+	}
+	a.save(true)
+	s.refreshSeasons()
 }
 
 func (s *Settings) buildRulesPage() {
@@ -745,6 +855,8 @@ func (s *Settings) showPage(name string) {
 		s.refreshRules()
 	case "backup":
 		s.refreshBackup()
+	case "seasons":
+		s.refreshSeasons()
 	}
 	if name != "plot" {
 		sendMessage(s.list, LB_SETCURSEL, ^uintptr(0), 0)
@@ -967,6 +1079,8 @@ func (s *Settings) navPage(id uint32) (page, glyph string) {
 		return "general", "\uE713"
 	case idAppearance:
 		return "look", "\uE790"
+	case idSeasonsNav:
+		return "seasons", "\uE706"
 	case idRulesNav:
 		return "rules", "\uE71C"
 	case idBackupNav:
@@ -1207,6 +1321,15 @@ func (s *Settings) loadPlot() {
 	s.setBrush(s.plotTitleSw, tc)
 	enable(tmode == 2, s.plotTitleSw)
 	setWindowText(s.folderEdit, p.Folder)
+	setWindowText(s.bgEdit, p.Background)
+	for i, f := range BgFits {
+		if f.Key == p.BgFit {
+			sendMessage(s.bgFitCombo, 0x14E, uintptr(i), 0)
+		}
+	}
+	sendMessage(s.bgBar, TBM_SETPOS, 1, uintptr(p.BgAlpha()))
+	setWindowText(s.bgLabel, fmt.Sprintf("%d%%", p.BgAlpha()))
+	enable(p.Background != "", s.bgClear, s.bgFitCombo, s.bgBar)
 	sortIdx := map[string]int{"": 0, "name": 0, "date": 1, "type": 2, "size": 3}[p.FolderSort]
 	sendMessage(s.sortCombo, 0x14E, uintptr(sortIdx), 0)
 	iconIdx := 0
@@ -1565,6 +1688,21 @@ func (s *Settings) wndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 func (s *Settings) command(id int, code uint32) {
 	a := s.a
 	p := a.cfg.Plot(s.cur)
+	if i := id - idSeasonBase; i >= 0 && i < len(Seasons) {
+		key := Seasons[i].Key
+		off := a.cfg.SeasonsOff[:0:0]
+		for _, k := range a.cfg.SeasonsOff {
+			if k != key {
+				off = append(off, k)
+			}
+		}
+		if !checked(s.seasonToggles[i]) {
+			off = append(off, key)
+		}
+		a.cfg.SeasonsOff = off
+		s.seasonChanged()
+		return
+	}
 	switch id {
 	case 2: // IDCANCEL (Esc)
 		call(pDestroyWindow, s.hwnd)
@@ -1577,6 +1715,49 @@ func (s *Settings) command(id int, code uint32) {
 				if a.editing {
 					a.syncOverlays()
 				}
+			}
+		}
+	case idSeasonsNav:
+		s.showPage("seasons")
+	case idSeason:
+		if code == 1 {
+			i := int(sendMessage(s.seasonCombo, 0x147, 0, 0))
+			switch {
+			case i <= 0:
+				a.cfg.Season = ""
+			case i == 1:
+				a.cfg.Season = "auto"
+			case i-2 < len(Seasons):
+				a.cfg.Season = Seasons[i-2].Key
+			}
+			s.seasonChanged()
+		}
+	case idSeasonDecor:
+		a.cfg.SeasonDecorOnly = checked(s.seasonDecor)
+		s.seasonChanged()
+	case idBgBrowse:
+		if p != nil {
+			if path := imageDialog(s.hwnd, Tf("Choose a background image for \"%s\"", p.Title), p.Background); path != "" {
+				if _, err := DecodeBackground(path); err != nil {
+					messageBox(s.hwnd, Tf("Plots couldn't use that image: %s", err.Error()), "Plots", MB_OK|MB_ICONWARNING)
+					break
+				}
+				p.Background = path
+				a.plotChanged()
+				s.loadPlot()
+			}
+		}
+	case idBgClear:
+		if p != nil && p.Background != "" {
+			p.Background = ""
+			a.plotChanged()
+			s.loadPlot()
+		}
+	case idBgFit:
+		if code == 1 && p != nil {
+			if i := int(sendMessage(s.bgFitCombo, 0x147, 0, 0)); i >= 0 && i < len(BgFits) {
+				p.BgFit = BgFits[i].Key
+				a.plotChanged()
 			}
 		}
 	case idGeneral:
@@ -2020,6 +2201,13 @@ func (s *Settings) slider(lp uintptr) {
 			if a.editing {
 				a.syncOverlays()
 			}
+		}
+	case s.bgBar:
+		if p := a.cfg.Plot(s.cur); p != nil && p.BgAlpha() != v {
+			p.BgOpacity = v
+			setWindowText(s.bgLabel, fmt.Sprintf("%d%%", v))
+			a.markDirty()
+			a.updatePanels()
 		}
 	case s.fadeBar:
 		if v != a.cfg.FadeLevel {

@@ -126,15 +126,22 @@ func LocalFolder(path string) bool {
 }
 
 // ImportFolders checks the live folders in an imported layout. Plots that
-// point at anything but a local folder become ordinary plots; remote, if
+// point at anything but a local folder become ordinary plots, and background
+// images anywhere but a local drive are left out; remote, if
 // set, also catches drive letters mapped to network shares. It returns the
 // live folders kept and the ones dropped.
 func ImportFolders(cfg *Config, remote func(string) bool) (kept, dropped []string) {
+	ok := func(path string) bool { return LocalFolder(path) && (remote == nil || !remote(path)) }
 	for _, p := range cfg.Plots {
+		if p.Background != "" && !ok(p.Background) {
+			// a background image on a network share would be fetched from that server too
+			dropped = append(dropped, p.Background)
+			p.Background = ""
+		}
 		if p.Folder == "" {
 			continue
 		}
-		if LocalFolder(p.Folder) && (remote == nil || !remote(p.Folder)) {
+		if ok(p.Folder) {
 			kept = append(kept, p.Folder)
 		} else {
 			dropped = append(dropped, p.Folder)

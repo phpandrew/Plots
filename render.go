@@ -198,7 +198,11 @@ type RenderOpts struct {
 	Edit       bool // edit-mode overlay look
 	Selected   bool
 	EmptyHint  bool
-	DropTarget bool // another plot or tab is being dropped here
+	DropTarget bool        // another plot or tab is being dropped here
+	Ornament   string      // seasonal decoration ("" = none)
+	BgImage    *image.RGBA // background image, already laid out at W x H
+	BgOpacity  int         // 0-100
+	BgKey      string      // identifies the background image, for caching
 }
 
 const kappa = 0.5522848
@@ -269,6 +273,15 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 
 	// body
 	fill(img, alpha(o.Color, op), func(z *vector.Rasterizer) { roundRectPath(z, 0, 0, w, h, r, r, false) })
+	// background image, clipped to the rounded panel
+	if o.BgImage != nil && o.BgImage.Bounds().Dx() == o.W && o.BgImage.Bounds().Dy() == o.H && o.BgOpacity > 0 {
+		layer := image.NewRGBA(img.Bounds())
+		z := vector.NewRasterizer(o.W, o.H)
+		roundRectPath(z, 0, 0, w, h, r, r, false)
+		z.Draw(layer, layer.Bounds(), o.BgImage, image.Point{})
+		a := uint8(math.Min(100, float64(o.BgOpacity)) * 255 / 100)
+		draw.DrawMask(img, img.Bounds(), layer, image.Point{}, image.NewUniform(color.Alpha{a}), image.Point{}, draw.Over)
+	}
 	// title band
 	switch o.Header {
 	case HeaderShade:
@@ -330,6 +343,35 @@ func RenderPlot(o RenderOpts) *image.RGBA {
 		d.Src = image.NewUniform(titleInk)
 		d.Dot = fixed.Point26_6{X: x, Y: y}
 		d.DrawString(title)
+		if o.Ornament != "" {
+			// one either side of the title, if there's room
+			or := float32(o.TitleH) * 0.3
+			gap := float32(8 * s)
+			lo, hi := float32(8*s), w-float32(8*s)
+			if o.Grip || o.Locked {
+				lo = float32(28 * s)
+			}
+			if o.Chevron {
+				hi = w - th
+			}
+			if o.Inbox {
+				hi -= th - float32(6*s)
+			}
+			l, rr := float32(x.Round())-gap-or, float32((x+tw).Round())+gap+or
+			if strings.TrimSpace(title) == "" {
+				DrawOrnament(img, o.Ornament, w/2, th/2, or, 1)
+			} else if l-or >= lo && rr+or <= hi {
+				DrawOrnament(img, o.Ornament, l, th/2, or, 1)
+				DrawOrnament(img, o.Ornament, rr, th/2, or, 1)
+			}
+		}
+	}
+	// a larger, faint ornament in the bottom-right corner
+	if o.Ornament != "" && !o.Collapsed {
+		R := float32(math.Min(math.Min(float64(o.W), float64(o.H-o.TitleH))*0.16, 40*s))
+		if R >= float32(10*s) {
+			DrawOrnament(img, o.Ornament, w-R*1.45, h-R*1.45, R, 0.4)
+		}
 	}
 
 	// padlock for locked plots

@@ -10,7 +10,7 @@ This isn't Windows code signing (that needs a paid certificate). It's a free Ed2
   1. the signature is valid for that key,
   2. the downloaded file's SHA-256 matches the signed one,
   3. the signed version matches the release and is newer than the running version (so an old release can't be pushed back on you).
-- It checks again when it swaps the file in, so a `Plots-update.exe` dropped next to `Plots.exe` by something else is set aside as `Plots-update.exe.rejected` instead of run.
+- It checks again when it swaps the file in, so a `Plots-update.exe` dropped next to `Plots.exe` by something else is moved to `%APPDATA%\Plots\rejected-update.exe.bin` instead of run.
 - The release fails if the secret is missing or doesn't match `updatekey.go`, so a release the updater would refuse is never published.
 - The release notes also list the SHA-256 of `Plots.exe` for people who download it by hand.
 

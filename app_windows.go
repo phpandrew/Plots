@@ -152,6 +152,7 @@ func runApp(afterUpdate bool) {
 	a.applyLanguage()
 	a.applyTheme()
 	a.eng = NewEngine(cfg, a)
+	a.initSeasons()
 	a.eng.Logf = log.Printf
 	a.eng.FolderDrop = a.moveIntoFolder
 	a.mons = Monitors()
@@ -673,6 +674,13 @@ func (a *App) renderOpts(p *Plot, v *PlotView, edit bool) RenderOpts {
 	case strings.HasPrefix(p.TitleColor, "#"):
 		o.TitleAuto, o.TitleCol = false, ParseHex(p.TitleColor)
 	}
+	a.applySeason(&o)
+	if p.Background != "" {
+		if img := LaidOutBackground(p, o.W, o.H); img != nil {
+			o.BgImage, o.BgOpacity = img, p.BgAlpha()
+			o.BgKey = fmt.Sprintf("%s|%s|%p", p.Background, p.BgFit, img)
+		}
+	}
 	return o
 }
 
@@ -699,7 +707,7 @@ func (a *App) IsDir(path string) bool {
 // lookKey changes whenever anything affecting a plot's appearance changes.
 func (a *App) lookKey(o RenderOpts) string {
 	return fmt.Sprintf("%s|%v|%d|%d|%s|%d|%v|%v|%v|%v|%.2f|%dx%d|%v|%v|%d|%v|%d/%d/%d", o.Title+fmt.Sprint(o.Radius), o.Color, o.Opacity, o.TitlePt, o.FontFile, o.Header, o.Grip,
-		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows) + fmt.Sprint(o.DropTarget, o.Locked, o.TitleAuto, o.TitleCol)
+		o.HeaderCol, o.TitleCol, o.Inbox, o.Scale, o.W, o.H, o.Collapsed, o.TabNames, o.ActiveTab, o.TabRects, o.ScrollPos, o.ScrollMax, o.Rows) + fmt.Sprint(o.DropTarget, o.Locked, o.TitleAuto, o.TitleCol, o.Ornament, o.BgKey, o.BgOpacity, o.Header)
 }
 
 func (a *App) setHidden(h bool) {
@@ -808,10 +816,13 @@ func (a *App) checkUpdate() {
 		}
 	}
 	if err != nil {
-		// set it aside so it isn't checked again every few seconds
+		// set it aside (out of the way, not on the desktop) so it isn't checked again
 		log.Println("update: refused:", err)
-		os.Remove(upd + ".rejected")
-		os.Rename(upd, upd+".rejected")
+		aside := filepath.Join(plotsDir(), "rejected-update.exe.bin")
+		os.Remove(aside)
+		if os.Rename(upd, aside) != nil {
+			os.Remove(upd)
+		}
 		os.Remove(sigPath)
 		a.setUpdateStatus(Tf("Update not installed: %s.", err.Error()), false)
 		return

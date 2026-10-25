@@ -47,11 +47,31 @@ type openFileName struct {
 
 // fileDialog shows the standard Open or Save As dialog for .plots files.
 func fileDialog(owner HWND, save bool, title, dir, name string) string {
-	filter := u16z(T("Plots layout") + " (*.plots)\x00*.plots\x00" + T("Plots config") + " (*.json)\x00*.json\x00" + T("All files") + "\x00*.*\x00\x00")
+	filter := T("Plots layout") + " (*.plots)\x00*.plots\x00" + T("Plots config") + " (*.json)\x00*.json\x00" + T("All files") + "\x00*.*\x00\x00"
+	return openSaveDialog(owner, save, title, dir, name, filter, "plots")
+}
+
+// imageDialog asks for an image file, starting next to the current one.
+func imageDialog(owner HWND, title, current string) string {
+	dir := ""
+	if current != "" {
+		dir = filepath.Dir(current)
+	} else if pics, err := windows.KnownFolderPath(windows.FOLDERID_Pictures, 0); err == nil {
+		dir = pics
+	}
+	filter := T("Images") + " (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp)\x00*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp\x00" + T("All files") + "\x00*.*\x00\x00"
+	return openSaveDialog(owner, false, title, dir, "", filter, "")
+}
+
+func openSaveDialog(owner HWND, save bool, title, dir, name, filterText, defExt string) string {
+	filter := u16z(filterText)
 	buf := make([]uint16, 1024)
 	copy(buf[:len(buf)-1], utf16.Encode([]rune(name)))
 	ofn := openFileName{Owner: owner, Filter: &filter[0], FilterIndex: 1, File: &buf[0], MaxFile: uint32(len(buf)),
-		Title: u16(title), DefExt: u16("plots"), Flags: 0x80000 /*EXPLORER*/ | 0x8 /*NOCHANGEDIR*/ | 0x800 /*PATHMUSTEXIST*/}
+		Title: u16(title), Flags: 0x80000 /*EXPLORER*/ | 0x8 /*NOCHANGEDIR*/ | 0x800 /*PATHMUSTEXIST*/}
+	if defExt != "" {
+		ofn.DefExt = u16(defExt)
+	}
 	if dir != "" {
 		ofn.InitialDir = u16(dir)
 	}
@@ -132,7 +152,7 @@ func (a *App) importFrom(owner HWND, path string) {
 		msg += "\n\n" + T("Live folders in this file (Plots shows these folders, and files dropped on those plots move into them):") + "\n" + listPaths(kept)
 	}
 	if len(dropped) > 0 {
-		msg += "\n\n" + T("Not imported as live folders (network or unusual paths; you can add them again in Settings):") + "\n" + listPaths(dropped)
+		msg += "\n\n" + T("Left out (network or unusual paths; you can add them again in Settings):") + "\n" + listPaths(dropped)
 	}
 	if messageBox(owner, msg, "Plots", MB_YESNO|MB_ICONWARNING) != IDYES {
 		return

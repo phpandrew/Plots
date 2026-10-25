@@ -50,8 +50,17 @@ A lightweight Stardock Fences–style organizer. Single `Plots.exe`, no installe
 - **Starts fast** with Windows, and the desktop check interval is adjustable from 0.1 to 0.5 s.
 - **Updates itself:** checks GitHub Releases from the About page or automatically, then updates in place. Every update is signed, and Plots refuses one that isn't.
 - **8 languages:** English, Français, Español, Português (Brasil), Deutsch, 中文（简体）, 日本語 and Русский. Plots follows your Windows language, or pick one under **General › Language**.
+- **Seasonal themes:** Halloween, Christmas, Valentine's Day, St. Patrick's Day, Easter, Lunar New Year, Canada Day, the 4th of July, both Thanksgivings, New Year and the four seasons. Each recolours the plots and adds small drawn decorations. Pick which holidays show automatically, always use one, or keep your colours and add only the decorations.
+- **Background images:** give any plot a picture behind its icons, filled, fitted, stretched or tiled, with its own opacity.
 - **Lock a plot** so it can't be moved, resized, merged or split by accident (right-click its title bar, or in Settings).
 - **Small and portable:** one `Plots.exe`, no installer, no runtime. Every release is security-scanned before it's published.
+
+## Seasonal themes
+
+<p align="center">
+  <img src="docs/seasons.png" alt="Plots in each seasonal theme: New Year, Winter, Lunar New Year, Valentine's Day, St. Patrick's Day, Spring, Easter, Canada Day, Independence Day, Summer, Autumn, Thanksgiving, Halloween and Christmas" width="720"><br>
+  <em>Turn them on under <strong>Settings › Seasonal themes</strong>. Automatic shows each holiday for a week or two before the day.</em>
+</p>
 
 ## Languages
 
@@ -156,6 +165,8 @@ Plots sends nothing about you or your PC anywhere. Its only network use is check
 | `plotmodel.go` | Tabs, sorting rules and their presets, merging plots and splitting tabs |
 | `backup.go`, `backup_windows.go` | Export / import of `.plots` layouts, scheduled backups |
 | `peek_windows.go`, `peekview_windows.go` | The Peek shortcut and the plots it shows above your windows |
+| `seasons.go`, `seasons_windows.go`, `ornaments.go` | Seasonal themes: dates, colours and the drawn decorations |
+| `bgimage.go` | Plot background images: loading, caching and layout |
 | `iconfade_windows.go` | Fades the desktop icons with the plots |
 | `i18n.go`, `i18n_windows.go`, `lang/*.json` | Translations: `T("English text")` looks the text up in the current language |
 | `update.go`, `updatekey.go`, `internal/updatesig/`, `tools/sign/` | Signed updates: checking them in Plots, and making the key and signatures |
