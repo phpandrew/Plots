@@ -137,12 +137,15 @@ jobs:
           V: ${{ needs.build.outputs.version }}
         run: |
           sum=$(sha256sum dist/Plots.exe | cut -d' ' -f1)
+          {
+            echo "Download \`Plots.exe\` and run it. Windows may warn that it's from an unknown publisher: click **More info › Run anyway**. [Privacy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/PRIVACY.md)"
+            echo
+            echo "SHA-256 of \`Plots.exe\`: \`$sum\`"
+          } > notes.md
           gh release create "v$V" dist/Plots.exe dist/Plots-update.exe dist/Plots-update.exe.sig \
             --repo "$GITHUB_REPOSITORY" \
             --title "Plots v$V" \
             --target "$GITHUB_SHA" \
-            --notes "Download \`Plots.exe\` and run it. Windows may warn that it's from an unknown publisher: click **More info › Run anyway**. [Privacy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/PRIVACY.md)
-
-SHA-256 of \`Plots.exe\`: \`$sum\`" \
+            --notes-file notes.md \
             --generate-notes \
             --latest
