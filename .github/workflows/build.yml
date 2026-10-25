@@ -57,26 +57,34 @@ jobs:
           mm=${base%.*}; p=${base##*.}
           while git ls-remote --exit-code --tags origin "refs/tags/v$mm.$p" >/dev/null 2>&1; do p=$((p+1)); done
           v="$mm.$p"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then v="$v-pr.${{ github.run_number }}"; fi
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then v="$v-pr.$GITHUB_RUN_NUMBER"; fi
           if [ "$v" != "$base" ]; then echo "::notice::VERSION says $base but it is already released; building $v"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp the version into the exe's file properties
+        env:
+          v: ${{ steps.ver.outputs.version }} # via env, never inlined into the shell
+        run: |
+          # Windows version resources need plain numbers: 0.3.1-pr.7 -> 0.3.1
+          go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json \
+            --product-version "${v%%-*}" --file-version "${v%%-*}"
 
       - name: Build Plots.exe
         env:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: "0"
+          v: ${{ steps.ver.outputs.version }}
         run: |
           go build -trimpath \
-            -ldflags "-s -w -H windowsgui -X main.version=${{ steps.ver.outputs.version }}" \
+            -ldflags "-s -w -H windowsgui -X main.version=$v" \
             -o dist/Plots.exe .
-          cp dist/Plots.exe dist/Plots-update.exe
 
       - name: Upload build
         uses: actions/upload-artifact@v7
         with:
           name: Plots-v${{ steps.ver.outputs.version }}
-          path: dist/*.exe
+          path: dist/Plots.exe
           retention-days: 30
 
   security:
@@ -95,19 +103,46 @@ jobs:
     permissions:
       contents: write # create the tag and release
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache: true
+
       - uses: actions/download-artifact@v8
         with:
           name: Plots-v${{ needs.build.outputs.version }}
           path: dist
+
+      - name: Sign the update
+        # Plots only installs updates signed with this key (docs/UPDATE-SIGNING.md).
+        # The tool also checks the key matches updatekey.go, so a release can
+        # never ship that the built-in updater would refuse.
+        env:
+          PLOTS_SIGNING_KEY: ${{ secrets.PLOTS_SIGNING_KEY }}
+          V: ${{ needs.build.outputs.version }}
+        run: |
+          if [ -z "$PLOTS_SIGNING_KEY" ]; then
+            echo "::error::The PLOTS_SIGNING_KEY secret isn't set. See docs/UPDATE-SIGNING.md."
+            exit 1
+          fi
+          cp dist/Plots.exe dist/Plots-update.exe
+          go run ./tools/sign sign "$V" dist/Plots-update.exe
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ needs.build.outputs.version }}
         run: |
-          gh release create "v$V" dist/Plots.exe dist/Plots-update.exe \
+          sum=$(sha256sum dist/Plots.exe | cut -d' ' -f1)
+          gh release create "v$V" dist/Plots.exe dist/Plots-update.exe dist/Plots-update.exe.sig \
             --repo "$GITHUB_REPOSITORY" \
             --title "Plots v$V" \
             --target "$GITHUB_SHA" \
+            --notes "Download \`Plots.exe\` and run it. Windows may warn that it's from an unknown publisher: click **More info › Run anyway**. [Privacy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/PRIVACY.md)
+
+SHA-256 of \`Plots.exe\`: \`$sum\`" \
             --generate-notes \
             --latest

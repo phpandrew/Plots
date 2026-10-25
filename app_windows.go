@@ -793,6 +793,8 @@ func dumpTree(label string, parent HWND) {
 	log.Printf("  virtual screen=%v progman client origin=%v", vs, clientToScreen(parent, Point{}))
 }
 
+var refusedUpdate string // size and time of the Plots-update.exe last refused
+
 // checkUpdate swaps in Plots-update.exe placed next to Plots.exe and restarts,
 // if Plots-update.exe.sig beside it shows it's a newer, genuine Plots build.
 func (a *App) checkUpdate() {
@@ -802,10 +804,20 @@ func (a *App) checkUpdate() {
 	}
 	dir := filepath.Dir(exe)
 	upd := filepath.Join(dir, updateName)
-	if _, err := os.Stat(upd); err != nil {
+	st, err := os.Stat(upd)
+	if err != nil {
 		return
 	}
 	sigPath := filepath.Join(dir, updateSigName)
+	// a file that was already refused is left alone (it may be one you
+	// downloaded yourself) and not checked again until it changes
+	seen := fmt.Sprint(st.Size(), st.ModTime().UnixNano())
+	if sst, err := os.Stat(sigPath); err == nil {
+		seen += fmt.Sprint("|", sst.Size(), sst.ModTime().UnixNano())
+	}
+	if seen == refusedUpdate {
+		return
+	}
 	sig, err := os.ReadFile(sigPath)
 	if err != nil {
 		err = errors.New(T("the update isn't signed by Plots, so it wasn't installed"))
@@ -816,17 +828,12 @@ func (a *App) checkUpdate() {
 		}
 	}
 	if err != nil {
-		// set it aside (out of the way, not on the desktop) so it isn't checked again
-		log.Println("update: refused:", err)
-		aside := filepath.Join(plotsDir(), "rejected-update.exe.bin")
-		os.Remove(aside)
-		if os.Rename(upd, aside) != nil {
-			os.Remove(upd)
-		}
-		os.Remove(sigPath)
+		refusedUpdate = seen
+		log.Printf("update: refused %s: %v", upd, err)
 		a.setUpdateStatus(Tf("Update not installed: %s.", err.Error()), false)
 		return
 	}
+	refusedUpdate = ""
 	os.Remove(sigPath)
 	old := filepath.Join(dir, "Plots.old.exe")
 	os.Remove(old)
