@@ -166,6 +166,7 @@ Plots sends nothing about you or your PC anywhere. Its only network use is check
 | `backup.go`, `backup_windows.go` | Export / import of `.plots` layouts, scheduled backups |
 | `peek_windows.go`, `peekview_windows.go` | The Peek shortcut and the plots it shows above your windows |
 | `seasons.go`, `seasons_windows.go`, `ornaments.go` | Seasonal themes: dates, colours and the drawn decorations |
+| `memory.go`, `memory_windows.go` | Keeping RAM low: garbage-collection tuning, memory-mapped system fonts, a memory line in the log |
 | `bgimage.go` | Plot background images: loading, caching and layout |
 | `iconfade_windows.go` | Fades the desktop icons with the plots |
 | `i18n.go`, `i18n_windows.go`, `lang/*.json` | Translations: `T("English text")` looks the text up in the current language |

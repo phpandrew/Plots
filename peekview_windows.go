@@ -91,6 +91,9 @@ func (a *App) closePeek() {
 		call(pDestroyWindow, h)
 	}
 	peekSel = ""
+	if len(wins) > 0 {
+		releaseMemory()
+	}
 }
 
 // refreshPeek re-renders the peek view (new thumbnails, tab switch).

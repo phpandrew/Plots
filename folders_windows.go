@@ -170,6 +170,7 @@ var (
 
 	thumbMu      sync.Mutex
 	thumbCache   = map[string]*image.RGBA{}
+	thumbBytes   int // pixels held by thumbCache
 	thumbPending = map[string]bool{}
 	thumbQueue   = make(chan thumbReq, 4096)
 	thumbGen     int
@@ -225,10 +226,14 @@ func thumbWorker(main HWND) {
 		}
 		img := shellThumb(req.path, req.size)
 		thumbMu.Lock()
-		if len(thumbCache) > 3000 {
-			thumbCache = map[string]*image.RGBA{}
+		if thumbBytes > thumbBudget {
+			// start over; what's on screen is fetched again in the background
+			thumbCache, thumbBytes = map[string]*image.RGBA{}, 0
 		}
 		thumbCache[req.key] = img
+		if img != nil {
+			thumbBytes += len(img.Pix)
+		}
 		delete(thumbPending, req.key)
 		thumbGen++
 		thumbMu.Unlock()
@@ -516,7 +521,14 @@ func (a *App) newFolderPlot(owner HWND) {
 	a.tick()
 }
 
-var tintCache = map[string]*image.RGBA{}
+// Thumbnail caches are capped by size rather than count: 3,000 large
+// thumbnails could otherwise hold hundreds of MB.
+const thumbBudget, tintBudget = 24 << 20, 12 << 20
+
+var (
+	tintCache = map[string]*image.RGBA{}
+	tintBytes int
+)
 
 // tinted is the entry's icon with the live-folder tint applied (Appearance).
 func (a *App) tinted(p *Plot, e folderEntry, px int) image.Image {
@@ -541,10 +553,11 @@ func (a *App) tinted(p *Plot, e folderEntry, px int) image.Image {
 	if t, ok := tintCache[key]; ok {
 		return t
 	}
-	if len(tintCache) > 3000 {
-		tintCache = map[string]*image.RGBA{}
+	if tintBytes > tintBudget {
+		tintCache, tintBytes = map[string]*image.RGBA{}, 0
 	}
 	t := TintImage(img, ParseHex(c), a.cfg.TintStrength)
 	tintCache[key] = t
+	tintBytes += len(t.Pix)
 	return t
 }

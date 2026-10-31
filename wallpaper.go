@@ -90,7 +90,17 @@ func RenderWallpaper(spec WallSpec, src image.Image, out Rect) *image.RGBA {
 
 // ComposePanel draws the plot over the wallpaper crop beneath it.
 func ComposePanel(bg *image.RGBA, bgOrigin Point, rect Rect, plot *image.RGBA) *image.RGBA {
-	out := image.NewRGBA(image.Rect(0, 0, rect.W(), rect.H()))
+	return ComposePanelInto(nil, bg, bgOrigin, rect, plot)
+}
+
+// ComposePanelInto is ComposePanel writing into dst when it's the right size.
+func ComposePanelInto(dst, bg *image.RGBA, bgOrigin Point, rect Rect, plot *image.RGBA) *image.RGBA {
+	out := dst
+	if out == nil || out.Bounds() != image.Rect(0, 0, rect.W(), rect.H()) {
+		out = image.NewRGBA(image.Rect(0, 0, rect.W(), rect.H()))
+	} else if bg == nil || !out.Bounds().Add(image.Pt(rect.L-bgOrigin.X, rect.T-bgOrigin.Y)).In(bg.Bounds()) {
+		clear(out.Pix) // a reused buffer that the wallpaper won't fully cover
+	}
 	if bg != nil {
 		draw.Draw(out, out.Bounds(), bg, image.Pt(rect.L-bgOrigin.X, rect.T-bgOrigin.Y), draw.Src)
 	} else {

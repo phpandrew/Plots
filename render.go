@@ -26,6 +26,9 @@ var (
 	faceCache = map[string]font.Face{}
 )
 
+// readFontFile reads a font file; on Windows it maps system fonts instead.
+var readFontFile = os.ReadFile
+
 // loadFontFile parses a .ttf/.otf/.ttc file ("" = default Segoe UI Semibold).
 func loadFontFile(path string) *opentype.Font {
 	if f, ok := fonts[path]; ok {
@@ -36,7 +39,7 @@ func loadFontFile(path string) *opentype.Font {
 		if f != nil || p == "" {
 			return
 		}
-		b, err := os.ReadFile(p)
+		b, err := readFontFile(p)
 		if err != nil {
 			return
 		}
@@ -75,8 +78,9 @@ func faceFor(path string, px float64) font.Face {
 	if err != nil {
 		return nil
 	}
-	faceCache[key] = &fallbackFace{Face: ff, px: px}
-	return ff
+	fb := &fallbackFace{Face: ff, px: px}
+	faceCache[key] = fb
+	return fb
 }
 
 func face(px float64) font.Face { return faceFor("", px) }
@@ -87,56 +91,84 @@ func face(px float64) font.Face { return faceFor("", px) }
 var fallbackFaceFiles = []string{"msyh.ttc", "YuGothM.ttc", "meiryo.ttc", "malgun.ttf", "seguisym.ttf"}
 
 var (
-	fallbackOnce  sync.Once
-	fallbackFonts []*opentype.Font
+	fallbackMu    sync.Mutex
+	fallbackFonts = make([]*opentype.Font, len(fallbackFaceFiles))
+	fallbackDone  = make([]bool, len(fallbackFaceFiles))
 )
 
-func loadFallbackFonts() {
+// fallbackFont loads fallback font i the first time it's needed (they're
+// big: Microsoft YaHei alone is about 20 MB), or returns nil if missing.
+func fallbackFont(i int) *opentype.Font {
+	fallbackMu.Lock()
+	defer fallbackMu.Unlock()
+	if fallbackDone[i] {
+		return fallbackFonts[i]
+	}
+	fallbackDone[i] = true
 	win := os.Getenv("WINDIR")
 	if win == "" {
 		win = `C:\Windows`
 	}
-	for _, name := range fallbackFaceFiles {
-		b, err := os.ReadFile(filepath.Join(win, "Fonts", name))
-		if err != nil {
-			continue
-		}
-		if f, err := opentype.Parse(b); err == nil {
-			fallbackFonts = append(fallbackFonts, f)
-		} else if c, err := opentype.ParseCollection(b); err == nil && c.NumFonts() > 0 {
-			if f, err := c.Font(0); err == nil {
-				fallbackFonts = append(fallbackFonts, f)
-			}
-		}
+	b, err := readFontFile(filepath.Join(win, "Fonts", fallbackFaceFiles[i]))
+	if err != nil {
+		return nil
 	}
+	if f, err := opentype.Parse(b); err == nil {
+		fallbackFonts[i] = f
+	} else if c, err := opentype.ParseCollection(b); err == nil && c.NumFonts() > 0 {
+		fallbackFonts[i], _ = c.Font(0)
+	}
+	return fallbackFonts[i]
 }
 
 // fallbackFace draws with Face and borrows missing glyphs from fallback fonts.
 type fallbackFace struct {
 	font.Face
 	px    float64
-	extra []font.Face // created on first miss
-	tried bool
+	extra map[int]font.Face // fallback faces made so far, by index
+	none  map[rune]bool     // characters no font has
+}
+
+// fallbackOrder tries the symbol font first for symbols and emoji.
+func fallbackOrder(r rune) []int {
+	n := len(fallbackFaceFiles)
+	if (r >= 0x2000 && r < 0x2E00) || r >= 0x1F000 {
+		return []int{n - 1, 0, 1, 2, 3}
+	}
+	return []int{0, 1, 2, 3, n - 1}
 }
 
 func (f *fallbackFace) pick(r rune) font.Face {
-	if _, ok := f.Face.GlyphAdvance(r); ok || r < 0x80 {
+	if r < 0x80 || f.none[r] {
 		return f.Face
 	}
-	if !f.tried {
-		f.tried = true
-		fallbackOnce.Do(loadFallbackFonts)
-		for _, ff := range fallbackFonts {
-			if fc, err := opentype.NewFace(ff, &opentype.FaceOptions{Size: f.px, DPI: 72, Hinting: font.HintingFull}); err == nil {
-				f.extra = append(f.extra, fc)
-			}
-		}
+	if _, ok := f.Face.GlyphAdvance(r); ok {
+		return f.Face
 	}
-	for _, e := range f.extra {
+	for _, i := range fallbackOrder(r) {
+		e := f.extra[i]
+		if e == nil {
+			ff := fallbackFont(i)
+			if ff == nil {
+				continue
+			}
+			fc, err := opentype.NewFace(ff, &opentype.FaceOptions{Size: f.px, DPI: 72, Hinting: font.HintingFull})
+			if err != nil {
+				continue
+			}
+			if f.extra == nil {
+				f.extra = map[int]font.Face{}
+			}
+			f.extra[i], e = fc, fc
+		}
 		if _, ok := e.GlyphAdvance(r); ok {
 			return e
 		}
 	}
+	if f.none == nil {
+		f.none = map[rune]bool{}
+	}
+	f.none[r] = true
 	return f.Face
 }
 
@@ -782,8 +814,14 @@ func TintImage(img image.Image, c color.NRGBA, strength int) *image.RGBA {
 }
 
 // FadeImage scales a premultiplied image's strength (0..1).
-func FadeImage(img *image.RGBA, k float64) *image.RGBA {
-	out := image.NewRGBA(img.Bounds())
+func FadeImage(img *image.RGBA, k float64) *image.RGBA { return FadeInto(nil, img, k) }
+
+// FadeInto is FadeImage writing into dst, reusing it when it's the right size.
+func FadeInto(dst, img *image.RGBA, k float64) *image.RGBA {
+	out := dst
+	if out == nil || out.Bounds() != img.Bounds() {
+		out = image.NewRGBA(img.Bounds())
+	}
 	f := uint32(math.Round(math.Max(0, math.Min(1, k)) * 256))
 	for i, v := range img.Pix {
 		out.Pix[i] = uint8(uint32(v) * f >> 8)

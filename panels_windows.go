@@ -76,14 +76,24 @@ func (a *App) panelWndProc(h HWND, msg uint32, wp, lp uintptr) uintptr {
 
 // makeBitmap converts a premultiplied RGBA image into a 32-bit DIB section.
 func makeBitmap(img *image.RGBA) uintptr {
-	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	bmp, bits := newDIB(img.Bounds().Dx(), img.Bounds().Dy())
+	if bmp != 0 {
+		copyToDIB(bits, img)
+	}
+	return bmp
+}
+
+func newDIB(w, h int) (uintptr, unsafe.Pointer) {
 	bi := BITMAPINFOHEADER{Width: int32(w), Height: -int32(h), Planes: 1, BitCount: 32}
 	bi.Size = uint32(unsafe.Sizeof(bi))
 	var bits unsafe.Pointer
 	bmp := call(pCreateDIBSection, 0, uintptr(unsafe.Pointer(&bi)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0)
-	if bmp == 0 {
-		return 0
-	}
+	return bmp, bits
+}
+
+// copyToDIB writes img (RGBA) into a DIB's pixels (BGRA, opaque).
+func copyToDIB(bits unsafe.Pointer, img *image.RGBA) {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
 	dst := unsafe.Slice((*byte)(bits), w*h*4)
 	for y := 0; y < h; y++ {
 		row := img.Pix[y*img.Stride : y*img.Stride+w*4]
@@ -92,7 +102,6 @@ func makeBitmap(img *image.RGBA) uintptr {
 			o[x], o[x+1], o[x+2], o[x+3] = row[x+2], row[x+1], row[x], 255
 		}
 	}
-	return bmp
 }
 
 func (a *App) repaintDesktop(r Rect) {
@@ -226,6 +235,13 @@ func (a *App) updatePanels() {
 			a.destroyPanel(id)
 		}
 	}
+	if a.ticks%10 == 1 && a.drag == nil {
+		var used []Rect
+		for _, v := range a.eng.Views() {
+			used = append(used, v.Rect)
+		}
+		pruneWallpapers(a.mons, used)
+	}
 	if math.Abs(iconFade-a.iconFadeTarget()) > 0.001 {
 		a.startFade()
 	}
@@ -276,20 +292,32 @@ func (a *App) fadeTarget(id string) float64 {
 }
 
 // composePanel blends the panel's last render, faded, over the wallpaper.
+// The fade and blend buffers and the bitmap are reused while the panel keeps
+// its size, so fading in and out (60 frames a second) allocates nothing.
 func (a *App) composePanel(pn *panel, r Rect) {
 	if pn.plot == nil {
 		return
 	}
 	plot := pn.plot
 	if pn.fade < 0.999 {
-		plot = FadeImage(pn.plot, pn.fade)
+		pn.fadeBuf = FadeInto(pn.fadeBuf, pn.plot, pn.fade)
+		plot = pn.fadeBuf
 	}
 	bg, origin := wallpaperUnder(a.mons, r)
-	img := ComposePanel(bg, origin, r, plot)
-	if pn.hbm != 0 {
-		call(pDeleteObject, pn.hbm)
+	pn.compBuf = ComposePanelInto(pn.compBuf, bg, origin, r, plot)
+	img := pn.compBuf
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	if pn.hbm == 0 || pn.w != w || pn.h != h {
+		if pn.hbm != 0 {
+			call(pDeleteObject, pn.hbm)
+		}
+		pn.hbm, pn.bits = newDIB(w, h)
+		pn.w, pn.h = w, h
 	}
-	pn.hbm, pn.w, pn.h = makeBitmap(img), img.Bounds().Dx(), img.Bounds().Dy()
+	if pn.hbm != 0 {
+		call(pGdiFlush)
+		copyToDIB(pn.bits, img)
+	}
 	call(pInvalidateRect, pn.hwnd, 0, 0)
 }
 

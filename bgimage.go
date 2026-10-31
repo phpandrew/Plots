@@ -6,6 +6,7 @@ import (
 	"image"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,6 +16,7 @@ import (
 
 const (
 	bgMaxSide   = 2560
+	bgBudget    = 48 << 20   // decoded pictures kept, in bytes
 	bgMaxPixels = 40_000_000 // refuse anything bigger before decoding it
 	bgMaxBytes  = 100 << 20
 )
@@ -93,10 +95,15 @@ func backgroundImage(path string) (image.Image, time.Time) {
 	if err != nil {
 		log.Printf("background image %q: %v", path, err)
 	}
-	if len(bgCache) > 32 {
+	total := 0
+	for _, e := range bgCache {
+		total += imageBytes(e.img)
+	}
+	if total+imageBytes(img) > bgBudget {
 		bgCache = map[string]*bgEntry{}
 	}
 	bgCache[path] = &bgEntry{mod: st.ModTime(), size: st.Size(), img: img, checked: time.Now()}
+	releaseMemory() // the full-size decode was much bigger than what's kept
 	return img, st.ModTime()
 }
 
@@ -109,7 +116,7 @@ func LaidOutBackground(p *Plot, w, h int) *image.RGBA {
 	if img == nil {
 		return nil
 	}
-	key := fmt.Sprintf("%s|%d|%dx%d|%s", p.Background, mod.UnixNano(), w, h, p.BgFit)
+	key := fmt.Sprintf("%s|%s|%d|%dx%d|%s", p.ID, p.Background, mod.UnixNano(), w, h, p.BgFit)
 	bgMu.Lock()
 	out := bgLayout[key]
 	bgMu.Unlock()
@@ -118,12 +125,24 @@ func LaidOutBackground(p *Plot, w, h int) *image.RGBA {
 	}
 	out = FitImage(img, w, h, p.BgFit)
 	bgMu.Lock()
-	if len(bgLayout) > 24 {
-		bgLayout = map[string]*image.RGBA{}
+	// one laid-out picture per plot: drop the one for its old size or picture
+	prefix := p.ID + "|"
+	for k := range bgLayout {
+		if strings.HasPrefix(k, prefix) {
+			delete(bgLayout, k)
+		}
 	}
 	bgLayout[key] = out
 	bgMu.Unlock()
 	return out
+}
+
+func imageBytes(img image.Image) int {
+	if img == nil {
+		return 0
+	}
+	b := img.Bounds()
+	return b.Dx() * b.Dy() * 4
 }
 
 // BgAlpha is the background image's opacity, 10-100.

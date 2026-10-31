@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/draw"
@@ -47,5 +48,33 @@ func TestAutoTitleContrast(t *testing.T) {
 	img = RenderPlot(clear)
 	if l := Lum(img, wall, image.Pt(20, 20), image.Rect(40, 0, 260, 30)); l < 0.55 {
 		t.Fatalf("see-through plot over a white wallpaper measured dark: %.2f", l)
+	}
+}
+
+func TestComposeReuse(t *testing.T) {
+	bg := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	draw.Draw(bg, bg.Bounds(), image.NewUniform(color.RGBA{10, 20, 30, 255}), image.Point{}, draw.Src)
+	plot := image.NewRGBA(image.Rect(0, 0, 40, 30))
+	r := Rect{0, 0, 40, 30}
+	fresh := ComposePanel(bg, Point{}, r, plot)
+	buf := image.NewRGBA(image.Rect(0, 0, 40, 30))
+	for i := range buf.Pix {
+		buf.Pix[i] = 0xEE // stale pixels from an earlier frame
+	}
+	if got := ComposePanelInto(buf, bg, Point{}, r, plot); got != buf || !bytes.Equal(got.Pix, fresh.Pix) {
+		t.Error("reused buffer differs from a fresh one")
+	}
+	// partly off the wallpaper: the uncovered part must not keep stale pixels
+	r2 := Rect{80, 80, 120, 110}
+	fresh = ComposePanel(bg, Point{}, r2, plot)
+	for i := range buf.Pix {
+		buf.Pix[i] = 0xEE
+	}
+	if got := ComposePanelInto(buf, bg, Point{}, r2, plot); !bytes.Equal(got.Pix, fresh.Pix) {
+		t.Error("stale pixels where the wallpaper doesn't reach")
+	}
+	f1 := FadeImage(fresh, 0.4)
+	if f2 := FadeInto(buf, fresh, 0.4); f2 != buf || !bytes.Equal(f1.Pix, f2.Pix) {
+		t.Error("FadeInto differs")
 	}
 }

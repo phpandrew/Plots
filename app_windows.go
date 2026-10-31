@@ -48,6 +48,9 @@ type panel struct {
 	w, h int
 	plot *image.RGBA // last render, before fading and wallpaper blending
 	fade float64     // current strength 0..1 (1 = fully shown)
+
+	bits             unsafe.Pointer // hbm's pixels
+	fadeBuf, compBuf *image.RGBA    // reused while fading
 }
 
 type App struct {
@@ -142,6 +145,7 @@ func runApp(afterUpdate bool) {
 		log.SetOutput(f)
 	}
 	log.Printf("Plots %s starting", version)
+	tuneMemory()
 	cfgPath := filepath.Join(dir, "config.json")
 	cfg, err := LoadConfig(cfgPath)
 	if err != nil {
@@ -569,6 +573,9 @@ func (a *App) tick() {
 	}
 	if a.ticks%10 == 0 {
 		a.checkUpdate()
+	}
+	if a.ticks == 100 || a.ticks%600 == 0 {
+		logMemory(a.ticks == 100)
 	}
 	if a.ticks == 25 || a.ticks%600 == 0 {
 		a.maybeAutoCheck()

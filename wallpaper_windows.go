@@ -27,9 +27,12 @@ type wallMonitor struct {
 type wallCache struct {
 	sig    string                 // changes when anything about the wallpaper changes
 	images map[string]*image.RGBA // monitor rect string -> rendered wallpaper
+	specs  map[string]WallSpec    // monitor rect string -> how to render it
 }
 
-var wc = &wallCache{images: map[string]*image.RGBA{}}
+// Wallpapers are rendered per monitor on first use (a 2560 x 1440 monitor
+// is 14 MB), and dropped again for monitors with no plots on them.
+var wc = &wallCache{images: map[string]*image.RGBA{}, specs: map[string]WallSpec{}}
 
 func coString(p *uint16) string {
 	if p == nil {
@@ -98,6 +101,7 @@ func refreshWallpaper(ms []Monitor) bool {
 	}
 	wc.sig = sig
 	wc.images = map[string]*image.RGBA{}
+	wc.specs = map[string]WallSpec{}
 
 	virt := Rect{}
 	for i, m := range ms {
@@ -106,24 +110,6 @@ func refreshWallpaper(ms []Monitor) bool {
 		}
 		virt = Rect{min(virt.L, m.Rect.L), min(virt.T, m.Rect.T), max(virt.R, m.Rect.R), max(virt.B, m.Rect.B)}
 	}
-	decoded := map[string]image.Image{}
-	get := func(p string) image.Image {
-		if p == "" {
-			p = transcoded
-		}
-		if img, ok := decoded[p]; ok {
-			return img
-		}
-		img, err := loadImage(p)
-		if err != nil && p != transcoded {
-			img, err = loadImage(transcoded)
-		}
-		if err != nil {
-			log.Println("wallpaper load:", p, err)
-		}
-		decoded[p] = img
-		return img
-	}
 	for _, m := range ms {
 		path := ""
 		for _, w := range wm {
@@ -131,18 +117,60 @@ func refreshWallpaper(ms []Monitor) bool {
 				path = w.path
 			}
 		}
+		if path == "" {
+			path = transcoded
+		}
 		spec := WallSpec{Path: path, Position: pos, BG: bg, Area: m.Rect}
 		if pos == WPSpan {
 			spec.Area = virt
 		}
-		wc.images[fmt.Sprint(m.Rect)] = RenderWallpaper(spec, get(path), m.Rect)
+		wc.specs[fmt.Sprint(m.Rect)] = spec
 		log.Printf("wallpaper for %s %v: %q pos=%d", m.Name, m.Rect, path, pos)
 	}
 	return true
 }
 
+// renderMonitorWallpaper decodes and lays out one monitor's wallpaper.
+func renderMonitorWallpaper(m Monitor) *image.RGBA {
+	k := fmt.Sprint(m.Rect)
+	spec, ok := wc.specs[k]
+	if !ok {
+		return nil
+	}
+	transcoded := filepath.Join(os.Getenv("APPDATA"), `Microsoft\Windows\Themes\TranscodedWallpaper`)
+	img, err := loadImage(spec.Path)
+	if err != nil && spec.Path != transcoded {
+		img, err = loadImage(transcoded)
+	}
+	if err != nil {
+		log.Println("wallpaper load:", spec.Path, err)
+	}
+	out := RenderWallpaper(spec, img, m.Rect)
+	wc.images[k] = out
+	img = nil
+	releaseMemory() // the decoded photo was much bigger than what's kept
+	return out
+}
+
+// pruneWallpapers forgets rendered wallpapers of monitors with no plots.
+func pruneWallpapers(ms []Monitor, used []Rect) {
+	keep := map[string]bool{}
+	for _, r := range used {
+		keep[fmt.Sprint(monitorAt(ms, r.Center()).Rect)] = true
+	}
+	for k := range wc.images {
+		if !keep[k] {
+			delete(wc.images, k)
+		}
+	}
+}
+
 // wallpaperUnder returns the rendered wallpaper of the monitor containing r.
 func wallpaperUnder(ms []Monitor, r Rect) (*image.RGBA, Point) {
 	m := monitorAt(ms, r.Center())
-	return wc.images[fmt.Sprint(m.Rect)], Point{m.Rect.L, m.Rect.T}
+	img := wc.images[fmt.Sprint(m.Rect)]
+	if img == nil {
+		img = renderMonitorWallpaper(m)
+	}
+	return img, Point{m.Rect.L, m.Rect.T}
 }
